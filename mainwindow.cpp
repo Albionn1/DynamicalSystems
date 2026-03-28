@@ -230,9 +230,10 @@ void MainWindow::paintEvent(QPaintEvent*) {
             p.drawLine(trail_[i-1], trail_[i]);
         }
     }
+    //Debugging
 
-    qDebug() << "z:" << state_[2];
-    qDebug() << "poincarePlane:" << poincarePlane_;
+    // qDebug() << "z:" << state_[2];
+    // qDebug() << "poincarePlane:" << poincarePlane_;
 
 
     // Poincare section points
