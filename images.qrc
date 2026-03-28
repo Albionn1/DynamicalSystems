@@ -1,0 +1,18 @@
+<RCC>
+    <qresource prefix="/images">
+        <file>images/DoublePendulum.png</file>
+        <file>images/Lorenz.png</file>
+        <file>images/Rossler.png</file>
+        <file>images/VanDerPol.png</file>
+        <file>images/icon.png</file>
+        <file>images/DoublePendulumEquation.png</file>
+        <file>images/FirstOrderVanDerPolOscillator.png</file>
+        <file>images/LorenzEquation.png</file>
+        <file>images/RosslerEquation.png</file>
+        <file>images/SecondOrderVanDerPolOscillator.png</file>
+        <file>images/DoublePendulumEquationVector.svg</file>
+        <file>images/lorenzEquationVector.svg</file>
+        <file>images/RosslerEquationVector.svg</file>
+        <file>images/VanDerPolEquationVector.svg</file>
+    </qresource>
+</RCC>
