@@ -1220,17 +1220,11 @@ void MainWindow::paintVisualization(
 
         // =====================================================
         // CUSTOM IMAGE POINT DRAWING
-        // =====================================================
+        // =========================================================
 
-        p->setRenderHint(
-            QPainter::Antialiasing,
-            false
-            );
-
-
-        // -----------------------------------------------------
+        // ---------------------------------------------------------
         // Make sure strength array matches point array.
-        // -----------------------------------------------------
+        // ---------------------------------------------------------
 
         const std::size_t pointCount =
             std::min(
@@ -1239,219 +1233,167 @@ void MainWindow::paintVisualization(
                 );
 
 
-        if (pointCount > 1) {
+        // ---------------------------------------------------------
+        // Determine visible point count.
+        // ---------------------------------------------------------
 
-            // -------------------------------------------------
-            // Determine visible point count
-            // -------------------------------------------------
-
-            const std::size_t count =
-                std::min(
-                    customImageDrawIndex_,
-                    pointCount
-                    );
+        const std::size_t count =
+            std::min(
+                customImageDrawIndex_,
+                pointCount
+                );
 
 
-            // =================================================
-            // MAIN CYAN POINTS
-            // =================================================
+        // ---------------------------------------------------------
+        // POINT RENDERING
+        //
+        // Everything remains point-based.
+        // No original-image color is used.
+        // ---------------------------------------------------------
 
-            if (count > 0) {
+        if (count > 0) {
 
-                p->setPen(
-                    Qt::NoPen
-                    );
+            // Smooth circles
+            p->setRenderHint(
+                QPainter::Antialiasing,
+                true
+                );
 
-
-                for (std::size_t i = 0;
-                     i < count;
-                     ++i) {
-
-                    const float strength =
-                        customImagePointStrengths_[i];
-
-
-                    const QPointF& point =
-                        customImagePoints_[i];
+            p->setPen(
+                Qt::NoPen
+                );
 
 
-                    // -------------------------------------------------
-                    // Convert normalized image coordinates to screen
-                    // coordinates.
-                    // -------------------------------------------------
+            for (std::size_t i = 0;
+                 i < count;
+                 ++i) {
 
-                    QPointF screenPoint(
-                        targetRect.left() +
-                            point.x() *
-                                targetRect.width(),
-
-                        targetRect.top() +
-                            point.y() *
-                                targetRect.height()
+                const float strength =
+                    std::clamp(
+                        customImagePointStrengths_[i],
+                        0.0f,
+                        1.0f
                         );
 
 
-                    // -------------------------------------------------
-                    // Alpha based on edge strength
-                    // -------------------------------------------------
+                const QPointF& point =
+                    customImagePoints_[i];
 
-                    int alpha =
+
+                // -------------------------------------------------
+                // Convert normalized image coordinates to screen.
+                // -------------------------------------------------
+
+                QPointF screenPoint(
+                    targetRect.left() +
+                        point.x() *
+                            targetRect.width(),
+
+                    targetRect.top() +
+                        point.y() *
+                            targetRect.height()
+                    );
+
+
+                // =================================================
+                // STRENGTH CURVE
+                // =================================================
+                //
+                // Instead of a completely linear response,
+                // emphasize medium/strong points more naturally.
+                //
+
+                const double visualStrength =
+                    std::pow(
+                        static_cast<double>(strength),
+                        0.75
+                        );
+
+
+                // =================================================
+                // ALPHA
+                // =================================================
+
+                int alpha =
+                    static_cast<int>(
+                        35.0 +
+                        visualStrength * 220.0
+                        );
+
+
+                alpha =
+                    std::clamp(
+                        alpha,
+                        0,
+                        255
+                        );
+
+
+                // =================================================
+                // RADIUS
+                // =================================================
+                //
+                // Smaller points preserve detail.
+                // Strong points become progressively larger.
+                //
+
+                const double radius =
+                    0.55 +
+                    visualStrength * 1.45;
+
+
+                // =================================================
+                // SUBTLE GLOW FOR STRONG POINTS
+                // =================================================
+
+                if (strength >= 0.70f) {
+
+                    const int glowAlpha =
                         static_cast<int>(
-                            40.0f +
-                            strength * 215.0f
+                            18.0 +
+                            strength * 32.0
                             );
 
-
-                    alpha =
-                        std::clamp(
-                            alpha,
-                            0,
-                            255
-                            );
-
-
-                    // -------------------------------------------------
-                    // Cyan
-                    // -------------------------------------------------
 
                     p->setBrush(
                         QColor(
                             0,
                             212,
                             255,
-                            alpha
+                            glowAlpha
                             )
                         );
 
 
-                    // -------------------------------------------------
-                    // Point radius
-                    // -------------------------------------------------
-
-                    double radius =
-                        0.7 +
-                        strength * 1.3;
-
-
                     p->drawEllipse(
                         screenPoint,
-                        radius,
-                        radius
+                        radius * 1.9,
+                        radius * 1.9
                         );
                 }
-            }
 
 
-            // =================================================
-            // STRONG POINTS
-            // =================================================
-
-            if (count > 0) {
-
-                p->setPen(
-                    Qt::NoPen
-                    );
-
-
-                // -------------------------------------------------
-                // Strong points
-                // -------------------------------------------------
+                // =================================================
+                // MAIN POINT
+                // =================================================
 
                 p->setBrush(
                     QColor(
                         0,
                         212,
                         255,
-                        150
+                        alpha
                         )
                     );
 
 
-                for (std::size_t i = 0;
-                     i < count;
-                     ++i) {
-
-                    const float strength =
-                        customImagePointStrengths_[i];
-
-
-                    if (strength < 0.55f)
-                        continue;
-
-
-                    const QPointF& point =
-                        customImagePoints_[i];
-
-
-                    QPointF screenPoint(
-                        targetRect.left() +
-                            point.x() *
-                                targetRect.width(),
-
-                        targetRect.top() +
-                            point.y() *
-                                targetRect.height()
-                        );
-
-
-                    p->drawEllipse(
-                        screenPoint,
-                        1.25,
-                        1.25
-                        );
-                }
-
-
-                // -------------------------------------------------
-                // Very strong points
-                // -------------------------------------------------
-
-                p->setBrush(
-                    QColor(
-                        0,
-                        230,
-                        255,
-                        230
-                        )
+                p->drawEllipse(
+                    screenPoint,
+                    radius,
+                    radius
                     );
-
-
-                for (std::size_t i = 0;
-                     i < count;
-                     ++i) {
-
-                    const float strength =
-                        customImagePointStrengths_[i];
-
-
-                    if (strength < 0.80f)
-                        continue;
-
-
-                    const QPointF& point =
-                        customImagePoints_[i];
-
-
-                    QPointF screenPoint(
-                        targetRect.left() +
-                            point.x() *
-                                targetRect.width(),
-
-                        targetRect.top() +
-                            point.y() *
-                                targetRect.height()
-                        );
-
-
-                    p->drawEllipse(
-                        screenPoint,
-                        1.6,
-                        1.6
-                        );
-                }
             }
         }
-
 
         // =====================================================
         // CUSTOM IMAGE HUD
