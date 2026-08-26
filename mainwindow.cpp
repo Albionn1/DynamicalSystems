@@ -832,7 +832,6 @@ void MainWindow::paintVisualization(
         QColor(20, 20, 25)
         );
 
-
     p->fillRect(
         rect,
         bg
@@ -862,7 +861,6 @@ void MainWindow::paintVisualization(
                 )
             );
 
-
         for (int x = 0;
              x < rect.width();
              x += 50) {
@@ -874,7 +872,6 @@ void MainWindow::paintVisualization(
                 rect.height()
                 );
         }
-
 
         for (int y = 0;
              y < rect.height();
@@ -897,94 +894,334 @@ void MainWindow::paintVisualization(
     if (customImageActive_ &&
         !customImage_.isNull()) {
 
+        // =====================================================
+        // COMPARISON MODE
+        //
+        // Before finished:
+        //     One centered image.
+        //
+        // After finished:
+        //     LEFT  = cyan point reconstruction
+        //     RIGHT = original image at 50% opacity
+        // =====================================================
 
-        // -----------------------------------------------------
-        // Calculate image size
-        // -----------------------------------------------------
-
-        QSize imageSize =
-            customImage_.size();
-
-
-        const double maxWidth =
-            rect.width() * 0.70;
-
-
-        const double maxHeight =
-            rect.height() * 0.70;
+        const bool comparisonMode =
+            customImageDrawingFinished_;
 
 
-        const double scaleFactor =
-            std::min(
-                maxWidth /
-                    static_cast<double>(
-                        imageSize.width()
-                        ),
+        // =====================================================
+        // POINT IMAGE RECTANGLE
+        // =====================================================
 
-                maxHeight /
-                    static_cast<double>(
-                        imageSize.height()
-                        )
+        QRect targetRect;
+
+
+        if (!comparisonMode) {
+
+            // -------------------------------------------------
+            // NORMAL GENERATION MODE
+            // -------------------------------------------------
+
+            QSize imageSize =
+                customImage_.size();
+
+
+            const double maxWidth =
+                rect.width() * 0.70;
+
+
+            const double maxHeight =
+                rect.height() * 0.70;
+
+
+            const double scaleFactor =
+                std::min(
+                    maxWidth /
+                        static_cast<double>(
+                            imageSize.width()
+                            ),
+
+                    maxHeight /
+                        static_cast<double>(
+                            imageSize.height()
+                            )
+                    );
+
+
+            QSize targetSize(
+                static_cast<int>(
+                    imageSize.width() *
+                    scaleFactor
+                    ),
+
+                static_cast<int>(
+                    imageSize.height() *
+                    scaleFactor
+                    )
                 );
 
 
-        QSize targetSize(
-            static_cast<int>(
-                imageSize.width() *
-                scaleFactor
-                ),
+            targetRect =
+                QRect(
+                    static_cast<int>(
+                        center_.x() -
+                        targetSize.width() / 2.0
+                        ),
 
-            static_cast<int>(
-                imageSize.height() *
-                scaleFactor
-                )
-            );
+                    static_cast<int>(
+                        center_.y() -
+                        targetSize.height() / 2.0
+                        ),
+
+                    targetSize.width(),
+                    targetSize.height()
+                    );
+
+        } else {
+
+            // -------------------------------------------------
+            // COMPARISON MODE
+            //
+            // Put point reconstruction on LEFT half.
+            // -------------------------------------------------
+
+            const int margin = 30;
+
+            const int halfWidth =
+                rect.width() / 2;
 
 
-        // -----------------------------------------------------
-        // Center image
-        // -----------------------------------------------------
+            const int availableWidth =
+                halfWidth - margin * 2;
 
-        QRect targetRect(
-            static_cast<int>(
-                center_.x() -
-                targetSize.width() / 2.0
-                ),
 
-            static_cast<int>(
-                center_.y() -
-                targetSize.height() / 2.0
-                ),
+            const int availableHeight =
+                rect.height() - margin * 2;
 
-            targetSize.width(),
-            targetSize.height()
-            );
+
+            const double imageAspect =
+                static_cast<double>(
+                    customImage_.width()
+                    ) /
+                static_cast<double>(
+                    customImage_.height()
+                    );
+
+
+            int imageWidth =
+                availableWidth;
+
+
+            int imageHeight =
+                static_cast<int>(
+                    imageWidth /
+                    imageAspect
+                    );
+
+
+            if (imageHeight > availableHeight) {
+
+                imageHeight =
+                    availableHeight;
+
+
+                imageWidth =
+                    static_cast<int>(
+                        imageHeight *
+                        imageAspect
+                        );
+            }
+
+
+            targetRect =
+                QRect(
+                    margin +
+                        (availableWidth -
+                         imageWidth) / 2,
+
+                    (rect.height() -
+                     imageHeight) / 2,
+
+                    imageWidth,
+                    imageHeight
+                    );
+        }
 
 
         // =====================================================
-        // FAINT ORIGINAL IMAGE
+        // ORIGINAL IMAGE
         // =====================================================
 
-        p->save();
+        if (!comparisonMode) {
 
-        p->setOpacity(
-            0.15
-            );
+            // -------------------------------------------------
+            // During generation:
+            // Keep faint original image underneath points.
+            // -------------------------------------------------
 
-        p->drawImage(
-            targetRect,
-            customImage_
-            );
+            p->save();
 
-        p->restore();
+            p->setOpacity(
+                0.15
+                );
+
+            p->drawImage(
+                targetRect,
+                customImage_
+                );
+
+            p->restore();
+
+        } else {
+
+            // -------------------------------------------------
+            // After generation:
+            // Draw original image on RIGHT.
+            // -------------------------------------------------
+
+            const int margin = 30;
+
+            const int halfWidth =
+                rect.width() / 2;
+
+
+            const int availableWidth =
+                halfWidth - margin * 2;
+
+
+            const int availableHeight =
+                rect.height() - margin * 2;
+
+
+            const double imageAspect =
+                static_cast<double>(
+                    customImage_.width()
+                    ) /
+                static_cast<double>(
+                    customImage_.height()
+                    );
+
+
+            int imageWidth =
+                availableWidth;
+
+
+            int imageHeight =
+                static_cast<int>(
+                    imageWidth /
+                    imageAspect
+                    );
+
+
+            if (imageHeight > availableHeight) {
+
+                imageHeight =
+                    availableHeight;
+
+
+                imageWidth =
+                    static_cast<int>(
+                        imageHeight *
+                        imageAspect
+                        );
+            }
+
+
+            QRect originalRect(
+                halfWidth +
+                    (availableWidth -
+                     imageWidth) / 2,
+
+                (rect.height() -
+                 imageHeight) / 2,
+
+                imageWidth,
+                imageHeight
+                );
+
+
+            // -------------------------------------------------
+            // Original image at 50% opacity
+            // -------------------------------------------------
+
+            p->save();
+
+            p->setOpacity(
+                0.50
+                );
+
+            p->drawImage(
+                originalRect,
+                customImage_
+                );
+
+            p->restore();
+
+
+            // -------------------------------------------------
+            // Divider
+            // -------------------------------------------------
+
+            p->setPen(
+                QPen(
+                    QColor(70, 70, 80),
+                    1
+                    )
+                );
+
+            p->drawLine(
+                halfWidth,
+                20,
+                halfWidth,
+                rect.height() - 20
+                );
+
+
+            // -------------------------------------------------
+            // Labels
+            // -------------------------------------------------
+
+            p->setRenderHint(
+                QPainter::Antialiasing,
+                true
+                );
+
+            p->setPen(
+                QColor(
+                    220,
+                    220,
+                    230
+                    )
+                );
+
+            p->setFont(
+                QFont(
+                    "Monospace",
+                    10,
+                    QFont::Bold
+                    )
+                );
+
+
+            p->drawText(
+                targetRect.left(),
+                targetRect.top() + 30,
+                "POINT RECONSTRUCTION"
+                );
+
+
+            p->drawText(
+                originalRect.left(),
+                originalRect.top() + 30,
+                "ORIGINAL IMAGE"
+                );
+        }
 
 
         // =====================================================
         // CUSTOM IMAGE POINT DRAWING
         // =====================================================
 
-        // Disable antialiasing for the large number of
-        // tiny primitives used by the image visualization.
         p->setRenderHint(
             QPainter::Antialiasing,
             false
@@ -992,9 +1229,7 @@ void MainWindow::paintVisualization(
 
 
         // -----------------------------------------------------
-        // Make sure the cached strength array matches the
-        // point array. This protects against invalid access
-        // if an older image generation is still around.
+        // Make sure strength array matches point array.
         // -----------------------------------------------------
 
         const std::size_t pointCount =
@@ -1006,9 +1241,8 @@ void MainWindow::paintVisualization(
 
         if (pointCount > 1) {
 
-
             // -------------------------------------------------
-            // Determine how many points are currently visible
+            // Determine visible point count
             // -------------------------------------------------
 
             const std::size_t count =
@@ -1018,25 +1252,48 @@ void MainWindow::paintVisualization(
                     );
 
 
+            // =================================================
+            // MAIN CYAN POINTS
+            // =================================================
+
             if (count > 0) {
 
-                p->setPen(Qt::NoPen);
+                p->setPen(
+                    Qt::NoPen
+                    );
 
-                for (std::size_t i = 0; i < count; ++i) {
+
+                for (std::size_t i = 0;
+                     i < count;
+                     ++i) {
 
                     const float strength =
                         customImagePointStrengths_[i];
 
+
                     const QPointF& point =
                         customImagePoints_[i];
 
+
+                    // -------------------------------------------------
+                    // Convert normalized image coordinates to screen
+                    // coordinates.
+                    // -------------------------------------------------
+
                     QPointF screenPoint(
                         targetRect.left() +
-                            point.x() * targetRect.width(),
+                            point.x() *
+                                targetRect.width(),
 
                         targetRect.top() +
-                            point.y() * targetRect.height()
+                            point.y() *
+                                targetRect.height()
                         );
+
+
+                    // -------------------------------------------------
+                    // Alpha based on edge strength
+                    // -------------------------------------------------
 
                     int alpha =
                         static_cast<int>(
@@ -1044,7 +1301,18 @@ void MainWindow::paintVisualization(
                             strength * 215.0f
                             );
 
-                    alpha = std::clamp(alpha, 0, 255);
+
+                    alpha =
+                        std::clamp(
+                            alpha,
+                            0,
+                            255
+                            );
+
+
+                    // -------------------------------------------------
+                    // Cyan
+                    // -------------------------------------------------
 
                     p->setBrush(
                         QColor(
@@ -1055,9 +1323,15 @@ void MainWindow::paintVisualization(
                             )
                         );
 
+
+                    // -------------------------------------------------
+                    // Point radius
+                    // -------------------------------------------------
+
                     double radius =
                         0.7 +
                         strength * 1.3;
+
 
                     p->drawEllipse(
                         screenPoint,
@@ -1069,7 +1343,7 @@ void MainWindow::paintVisualization(
 
 
             // =================================================
-            // DRAW DOTS
+            // STRONG POINTS
             // =================================================
 
             if (count > 0) {
@@ -1183,6 +1457,12 @@ void MainWindow::paintVisualization(
         // CUSTOM IMAGE HUD
         // =====================================================
 
+        p->setRenderHint(
+            QPainter::Antialiasing,
+            true
+            );
+
+
         p->setPen(
             QColor(
                 220,
@@ -1223,10 +1503,40 @@ void MainWindow::paintVisualization(
             );
 
 
+        // -----------------------------------------------------
+        // Comparison status
+        // -----------------------------------------------------
+
+        if (comparisonMode) {
+
+            p->setPen(
+                QColor(
+                    140,
+                    145,
+                    155
+                    )
+                );
+
+            p->setFont(
+                QFont(
+                    "Monospace",
+                    9
+                    )
+                );
+
+
+            // p->drawText( //removed this because UI becomes too clustered
+            //     10,
+            //     40,
+            //     "COMPARISON COMPLETE"
+            //     );
+        }
+
+
         // =====================================================
         // STOP HERE
         //
-        // We do NOT draw the Lorenz/Rössler/Pendulum trail.
+        // We do NOT draw the normal dynamical-system trail.
         // =====================================================
 
         return;
@@ -1244,11 +1554,9 @@ void MainWindow::paintVisualization(
         trail_.size() > 1
         ) {
 
-
         for (int i = 1;
              i < trail_.size();
              ++i) {
-
 
             double t =
                 double(i) /
@@ -1345,12 +1653,10 @@ void MainWindow::paintVisualization(
         drawMode_ == DrawMode::Both
         ) {
 
-
         for (
             const auto& crossing :
             poincarePoints_
             ) {
-
 
             QColor col =
                 crossing.upward
@@ -1478,7 +1784,6 @@ void MainWindow::paintVisualization(
             )
         ) {
 
-
         p->drawText(
             10,
             hudTop,
@@ -1533,7 +1838,6 @@ void MainWindow::paintVisualization(
             drawMode_ == DrawMode::Both
             )
         ) {
-
 
         p->drawText(
             10,
@@ -1647,7 +1951,6 @@ void MainWindow::paintVisualization(
             "Double Pendulum"
             ) {
 
-
             double maxWidth =
                 rect.width() *
                 0.70;
@@ -1715,9 +2018,7 @@ void MainWindow::paintVisualization(
                     targetSize.height()
                     );
 
-
         } else {
-
 
             double maxWidth =
                 rect.width() *
@@ -1881,7 +2182,6 @@ void MainWindow::paintVisualization(
 
 
     } else if (!simulationActive_) {
-
 
         QRect box(
             rect.width() / 2 - 60,
@@ -2471,13 +2771,13 @@ void MainWindow::generateCustomImagePoints()
     // SETTINGS
     // =========================================================
 
-    const int cellSize = 6;
+    const int cellSize = 4;   // DEFAULT = 6
 
     // Maximum number of points.
-    const int maxPoints = 15000;
+    const int maxPoints = 25000;  // DEFAULT = 15000
 
     // Minimum number of points.
-    const int minPoints = 5000;
+    const int minPoints = 10000;  // DEFAULT = 5000
 
 
     // =========================================================
