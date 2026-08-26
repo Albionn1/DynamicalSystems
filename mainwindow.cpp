@@ -1251,38 +1251,34 @@ void MainWindow::paintVisualization(
         // No original-image color is used.
         // ---------------------------------------------------------
 
+        // =================================================
+        // POINT RENDERING
+        // =================================================
+
         if (count > 0) {
 
-            // Smooth circles
-            p->setRenderHint(
-                QPainter::Antialiasing,
-                true
-                );
+            p->setPen(Qt::NoPen);
 
-            p->setPen(
-                Qt::NoPen
-                );
-
+            // -------------------------------------------------
+            // PASS 1
+            // Soft atmospheric glow
+            //
+            // Very subtle. This does NOT fill the image.
+            // It only gives stronger points a little presence.
+            // -------------------------------------------------
 
             for (std::size_t i = 0;
                  i < count;
                  ++i) {
 
                 const float strength =
-                    std::clamp(
-                        customImagePointStrengths_[i],
-                        0.0f,
-                        1.0f
-                        );
+                    customImagePointStrengths_[i];
 
+                if (strength < 0.45f)
+                    continue;
 
                 const QPointF& point =
                     customImagePoints_[i];
-
-
-                // -------------------------------------------------
-                // Convert normalized image coordinates to screen.
-                // -------------------------------------------------
 
                 QPointF screenPoint(
                     targetRect.left() +
@@ -1295,29 +1291,99 @@ void MainWindow::paintVisualization(
                     );
 
 
-                // =================================================
-                // STRENGTH CURVE
-                // =================================================
-                //
-                // Instead of a completely linear response,
-                // emphasize medium/strong points more naturally.
-                //
-
-                const double visualStrength =
-                    std::pow(
-                        static_cast<double>(strength),
-                        0.75
+                // Glow only becomes noticeable on stronger points.
+                double glowStrength =
+                    std::clamp(
+                        (strength - 0.45) / 0.55,
+                        0.0,
+                        1.0
                         );
 
 
-                // =================================================
-                // ALPHA
-                // =================================================
+                double glowRadius =
+                    2.2 +
+                    glowStrength * 2.0;
+
+
+                int glowAlpha =
+                    static_cast<int>(
+                        12.0 +
+                        glowStrength * 28.0
+                        );
+
+
+                p->setBrush(
+                    QColor(
+                        0,
+                        212,
+                        255,
+                        glowAlpha
+                        )
+                    );
+
+
+                p->drawEllipse(
+                    screenPoint,
+                    glowRadius,
+                    glowRadius
+                    );
+            }
+
+
+            // -------------------------------------------------
+            // PASS 2
+            // Main points
+            // -------------------------------------------------
+
+            for (std::size_t i = 0;
+                 i < count;
+                 ++i) {
+
+                const float strength =
+                    customImagePointStrengths_[i];
+
+
+                const QPointF& point =
+                    customImagePoints_[i];
+
+
+                QPointF screenPoint(
+                    targetRect.left() +
+                        point.x() *
+                            targetRect.width(),
+
+                    targetRect.top() +
+                        point.y() *
+                            targetRect.height()
+                    );
+
+
+                // -------------------------------------------------
+                // Non-linear strength response
+                //
+                // Keeps weak points visible while giving strong
+                // points more visual weight.
+                // -------------------------------------------------
+
+                double visualStrength =
+                    std::pow(
+                        std::clamp(
+                            static_cast<double>(strength),
+                            0.0,
+                            1.0
+                            ),
+                        0.70
+                        );
+
+
+                // -------------------------------------------------
+                // Alpha
+                // -------------------------------------------------
 
                 int alpha =
                     static_cast<int>(
-                        35.0 +
-                        visualStrength * 220.0
+                        45.0 +
+                        visualStrength * 190.0
                         );
 
 
@@ -1329,59 +1395,41 @@ void MainWindow::paintVisualization(
                         );
 
 
-                // =================================================
-                // RADIUS
-                // =================================================
-                //
-                // Smaller points preserve detail.
-                // Strong points become progressively larger.
-                //
+                // -------------------------------------------------
+                // Radius
+                // -------------------------------------------------
 
-                const double radius =
-                    0.55 +
+                double radius =
+                    0.65 +
                     visualStrength * 1.45;
 
 
-                // =================================================
-                // SUBTLE GLOW FOR STRONG POINTS
-                // =================================================
+                // -------------------------------------------------
+                // Monochromatic cyan
+                //
+                // IMPORTANT:
+                // No color is taken from the original image.
+                // -------------------------------------------------
 
-                if (strength >= 0.70f) {
-
-                    const int glowAlpha =
-                        static_cast<int>(
-                            18.0 +
-                            strength * 32.0
-                            );
-
-
-                    p->setBrush(
-                        QColor(
-                            0,
-                            212,
-                            255,
-                            glowAlpha
-                            )
+                int green =
+                    static_cast<int>(
+                        180.0 +
+                        visualStrength * 35.0
                         );
 
 
-                    p->drawEllipse(
-                        screenPoint,
-                        radius * 1.9,
-                        radius * 1.9
+                int blue =
+                    static_cast<int>(
+                        215.0 +
+                        visualStrength * 40.0
                         );
-                }
 
-
-                // =================================================
-                // MAIN POINT
-                // =================================================
 
                 p->setBrush(
                     QColor(
                         0,
-                        212,
-                        255,
+                        green,
+                        blue,
                         alpha
                         )
                     );
@@ -1391,6 +1439,79 @@ void MainWindow::paintVisualization(
                     screenPoint,
                     radius,
                     radius
+                    );
+            }
+
+
+            // -------------------------------------------------
+            // PASS 3
+            // Strong point cores
+            //
+            // These create the "sparkle" / definition.
+            // -------------------------------------------------
+
+            for (std::size_t i = 0;
+                 i < count;
+                 ++i) {
+
+                const float strength =
+                    customImagePointStrengths_[i];
+
+
+                if (strength < 0.55f)
+                    continue;
+
+
+                const QPointF& point =
+                    customImagePoints_[i];
+
+
+                QPointF screenPoint(
+                    targetRect.left() +
+                        point.x() *
+                            targetRect.width(),
+
+                    targetRect.top() +
+                        point.y() *
+                            targetRect.height()
+                    );
+
+
+                double coreStrength =
+                    std::clamp(
+                        (static_cast<double>(strength) - 0.55) /
+                            0.45,
+                        0.0,
+                        1.0
+                        );
+
+
+                double coreRadius =
+                    0.45 +
+                    coreStrength * 0.85;
+
+
+                int coreAlpha =
+                    static_cast<int>(
+                        100.0 +
+                        coreStrength * 130.0
+                        );
+
+
+                p->setBrush(
+                    QColor(
+                        30,
+                        235,
+                        255,
+                        coreAlpha
+                        )
+                    );
+
+
+                p->drawEllipse(
+                    screenPoint,
+                    coreRadius,
+                    coreRadius
                     );
             }
         }
