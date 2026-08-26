@@ -37,6 +37,7 @@ struct Candidate
 {
     QPointF point;
     float strength;
+    float edgeStrength;
 };
 
 class MainWindow : public QMainWindow

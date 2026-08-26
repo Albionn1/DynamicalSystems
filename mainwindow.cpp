@@ -2830,17 +2830,13 @@ void MainWindow::generateCustomImagePoints()
     // SETTINGS
     // =========================================================
 
-    // =========================================================
-    // SETTINGS
-    // =========================================================
+    const int cellSize = 4;
 
-    const int cellSize = 4;   // DEFAULT = 6
+    const int maxPoints = 25000;
 
-    // Maximum number of points.
-    const int maxPoints = 25000;  // DEFAULT = 15000
+    const int minPoints = 10000;
 
-    // Minimum number of points.
-    const int minPoints = 10000;  // DEFAULT = 5000
+    const int maxProcessingSize = 1200;
 
 
     // =========================================================
@@ -2852,17 +2848,17 @@ void MainWindow::generateCustomImagePoints()
             QImage::Format_Grayscale8
             );
 
-    const int maxProcessingSize = 1200;
 
     if (image.width() > maxProcessingSize ||
         image.height() > maxProcessingSize) {
 
-        image = image.scaled(
-            maxProcessingSize,
-            maxProcessingSize,
-            Qt::KeepAspectRatio,
-            Qt::SmoothTransformation
-            );
+        image =
+            image.scaled(
+                maxProcessingSize,
+                maxProcessingSize,
+                Qt::KeepAspectRatio,
+                Qt::SmoothTransformation
+                );
     }
 
 
@@ -2877,66 +2873,106 @@ void MainWindow::generateCustomImagePoints()
         image.height();
 
 
-    if (width < 3 || height < 3)
+    if (width < 5 || height < 5)
         return;
 
 
     // =========================================================
-    // CALCULATE EDGE STRENGTH
+    // MULTI-SCALE EDGE MAPS
     //
-    // Sobel-like gradient.
+    // We calculate:
     //
-    // This is done ONLY ONCE when the image is generated,
-    // NOT every frame during painting.
+    // 1. Fine detail
+    // 2. Medium detail
+    // 3. Broad structure
+    //
+    // Each scale contributes differently to the final
+    // point importance.
     // =========================================================
 
-    std::vector<float> edgeStrength(
+    std::vector<float> fineEdges(
         static_cast<std::size_t>(width * height),
         0.0f
         );
 
 
-    float maxEdge =
+    std::vector<float> mediumEdges(
+        static_cast<std::size_t>(width * height),
+        0.0f
+        );
+
+
+    std::vector<float> broadEdges(
+        static_cast<std::size_t>(width * height),
+        0.0f
+        );
+
+
+    float maxFine =
         0.0f;
 
+    float maxMedium =
+        0.0f;
+
+    float maxBroad =
+        0.0f;
+
+
+    // =========================================================
+    // HELPER: SOBEL GRADIENT
+    //
+    // We use different sampling distances for each scale.
+    // =========================================================
+
+    // ---------------------------------------------------------
+    // FINE SCALE
+    //
+    // Detects small details.
+    // ---------------------------------------------------------
 
     for (int y = 1;
          y < height - 1;
          ++y) {
 
+        const uchar* previous =
+            image.constScanLine(y - 1);
+
+        const uchar* current =
+            image.constScanLine(y);
+
+        const uchar* next =
+            image.constScanLine(y + 1);
+
+
         for (int x = 1;
              x < width - 1;
              ++x) {
 
-
             const int p00 =
-                image.constScanLine(y - 1)[x - 1];
+                previous[x - 1];
 
             const int p01 =
-                image.constScanLine(y - 1)[x];
+                previous[x];
 
             const int p02 =
-                image.constScanLine(y - 1)[x + 1];
-
+                previous[x + 1];
 
             const int p10 =
-                image.constScanLine(y)[x - 1];
+                current[x - 1];
 
             const int p12 =
-                image.constScanLine(y)[x + 1];
-
+                current[x + 1];
 
             const int p20 =
-                image.constScanLine(y + 1)[x - 1];
+                next[x - 1];
 
             const int p21 =
-                image.constScanLine(y + 1)[x];
+                next[x];
 
             const int p22 =
-                image.constScanLine(y + 1)[x + 1];
+                next[x + 1];
 
 
-            // Sobel X
             const int gx =
                 -p00
                 - 2 * p10
@@ -2946,7 +2982,6 @@ void MainWindow::generateCustomImagePoints()
                 + p22;
 
 
-            // Sobel Y
             const int gy =
                 -p00
                 - 2 * p01
@@ -2971,104 +3006,287 @@ void MainWindow::generateCustomImagePoints()
                     );
 
 
-            edgeStrength[index] =
+            fineEdges[index] =
                 magnitude;
 
 
-            if (magnitude > maxEdge)
-                maxEdge = magnitude;
+            if (magnitude > maxFine)
+                maxFine = magnitude;
         }
     }
 
 
-    if (maxEdge <= 0.0f)
+    // =========================================================
+    // MEDIUM SCALE
+    //
+    // Compare pixels approximately 2 pixels apart.
+    // This captures larger features while ignoring some
+    // tiny pixel-level noise.
+    // =========================================================
+
+    for (int y = 2;
+         y < height - 2;
+         ++y) {
+
+        for (int x = 2;
+             x < width - 2;
+             ++x) {
+
+            const int left =
+                image.constScanLine(y)[x - 2];
+
+            const int right =
+                image.constScanLine(y)[x + 2];
+
+            const int top =
+                image.constScanLine(y - 2)[x];
+
+            const int bottom =
+                image.constScanLine(y + 2)[x];
+
+
+            const float gx =
+                static_cast<float>(
+                    right - left
+                    );
+
+
+            const float gy =
+                static_cast<float>(
+                    bottom - top
+                    );
+
+
+            const float magnitude =
+                std::sqrt(
+                    gx * gx +
+                    gy * gy
+                    );
+
+
+            const std::size_t index =
+                static_cast<std::size_t>(
+                    y * width + x
+                    );
+
+
+            mediumEdges[index] =
+                magnitude;
+
+
+            if (magnitude > maxMedium)
+                maxMedium = magnitude;
+        }
+    }
+
+
+    // =========================================================
+    // BROAD SCALE
+    //
+    // Compare pixels farther apart.
+    //
+    // This helps preserve large structural boundaries.
+    // =========================================================
+
+    for (int y = 4;
+         y < height - 4;
+         ++y) {
+
+        for (int x = 4;
+             x < width - 4;
+             ++x) {
+
+            const int left =
+                image.constScanLine(y)[x - 4];
+
+            const int right =
+                image.constScanLine(y)[x + 4];
+
+            const int top =
+                image.constScanLine(y - 4)[x];
+
+            const int bottom =
+                image.constScanLine(y + 4)[x];
+
+
+            const float gx =
+                static_cast<float>(
+                    right - left
+                    );
+
+
+            const float gy =
+                static_cast<float>(
+                    bottom - top
+                    );
+
+
+            const float magnitude =
+                std::sqrt(
+                    gx * gx +
+                    gy * gy
+                    );
+
+
+            const std::size_t index =
+                static_cast<std::size_t>(
+                    y * width + x
+                    );
+
+
+            broadEdges[index] =
+                magnitude;
+
+
+            if (magnitude > maxBroad)
+                maxBroad = magnitude;
+        }
+    }
+
+
+    if (maxFine <= 0.0f &&
+        maxMedium <= 0.0f &&
+        maxBroad <= 0.0f)
         return;
 
 
     // =========================================================
-    // NORMALIZE EDGE STRENGTH
-    //
-    // Slight gamma adjustment makes strong facial/detail
-    // edges stand out more.
+    // NORMALIZE EACH SCALE
     // =========================================================
 
-    for (float& value : edgeStrength) {
+    for (float& value :
+         fineEdges) {
 
         value =
             std::clamp(
-                value / maxEdge,
+                value / std::max(
+                    maxFine,
+                    0.0001f
+                    ),
                 0.0f,
                 1.0f
                 );
 
 
-        // Increase separation between weak and strong edges.
-        value = std::pow(
-            value,
-            0.65f
-            );
+        value =
+            std::pow(
+                value,
+                0.65f
+                );
+    }
+
+
+    for (float& value :
+         mediumEdges) {
+
+        value =
+            std::clamp(
+                value / std::max(
+                    maxMedium,
+                    0.0001f
+                    ),
+                0.0f,
+                1.0f
+                );
+
+
+        value =
+            std::pow(
+                value,
+                0.65f
+                );
+    }
+
+
+    for (float& value :
+         broadEdges) {
+
+        value =
+            std::clamp(
+                value / std::max(
+                    maxBroad,
+                    0.0001f
+                    ),
+                0.0f,
+                1.0f
+                );
+
+
+        value =
+            std::pow(
+                value,
+                0.65f
+                );
     }
 
 
     // =========================================================
-    // DETERMINE SAMPLING STEP
-    // =========================================================
-
-    // const double totalPixels =
-    //     static_cast<double>(
-    //         width * height
-    //         );
-
-
-    // double density =
-    //     static_cast<double>(
-    //         targetPointCount
-    //         ) /
-    //     totalPixels;
-
-
-    // density =
-    //     std::clamp(
-    //         density,
-    //         0.01,
-    //         0.75
-    //         );
-
-
-    // =========================================================
-    // BUILD CANDIDATE POINTS
+    // COMBINE MULTIPLE SCALES
     //
-    // More likely to select strong edges.
-    // Weak/background areas are still represented,
-    // but much less frequently.
-    // =========================================================
-
-    // =========================================================
-    // BUILD CANDIDATE POINTS USING SPATIAL CELLS
+    // Fine:
+    //     45%
     //
-    // Each cell keeps only its strongest edge point.
-    // This prevents large clusters of points in the same
-    // small area and greatly reduces the number of points.
+    // Medium:
+    //     35%
+    //
+    // Broad:
+    //     20%
+    //
+    // Fine details remain important, but large structures
+    // are still preserved.
     // =========================================================
 
-    // struct Candidate //declared in mainwindow.h
-    // {
-    //     QPointF point;
-    //     float strength;
-    // };
+    std::vector<float> edgeStrength(
+        static_cast<std::size_t>(width * height),
+        0.0f
+        );
 
 
-    // Number of cells in each direction.
+    for (std::size_t i = 0;
+         i < edgeStrength.size();
+         ++i) {
+
+        const double fine =
+            fineEdges[i];
+
+        const double medium =
+            mediumEdges[i];
+
+        const double broad =
+            broadEdges[i];
+
+
+        double combined =
+            fine * 0.45 +
+            medium * 0.35 +
+            broad * 0.20;
+
+
+        edgeStrength[i] =
+            static_cast<float>(
+                std::clamp(
+                    combined,
+                    0.0,
+                    1.0
+                    )
+                );
+    }
+
+
+    // =========================================================
+    // CREATE SPATIAL CELLS
+    // =========================================================
+
     const int cellsX =
-        (width + cellSize - 1) / cellSize;
+        (width + cellSize - 1) /
+        cellSize;
+
 
     const int cellsY =
-        (height + cellSize - 1) / cellSize;
+        (height + cellSize - 1) /
+        cellSize;
 
 
-    // Store the strongest candidate for every cell.
-    //
-    // -1 means that the cell has no candidate yet.
     std::vector<int> bestCandidate(
         static_cast<std::size_t>(
             cellsX * cellsY
@@ -3079,6 +3297,7 @@ void MainWindow::generateCustomImagePoints()
 
     std::vector<Candidate> candidates;
 
+
     candidates.reserve(
         static_cast<std::size_t>(
             cellsX * cellsY
@@ -3086,9 +3305,11 @@ void MainWindow::generateCustomImagePoints()
         );
 
 
-    // ---------------------------------------------------------
-    // Find strongest edge in every cell
-    // ---------------------------------------------------------
+    // =========================================================
+    // BUILD CANDIDATES
+    //
+    // One strongest point per spatial cell.
+    // =========================================================
 
     for (int y = 1;
          y < height - 1;
@@ -3103,26 +3324,26 @@ void MainWindow::generateCustomImagePoints()
                     y * width + x
                     );
 
+
             const float strength =
                 edgeStrength[index];
 
 
-            // Ignore extremely weak pixels.
-            //
-            // This is important for photographic backgrounds.
-            if (strength < 0.20f)
+            if (strength < 0.15f)
                 continue;
 
 
             const int cellX =
                 x / cellSize;
 
+
             const int cellY =
                 y / cellSize;
 
 
             const int cellIndex =
-                cellY * cellsX + cellX;
+                cellY * cellsX +
+                cellX;
 
 
             const int existing =
@@ -3133,21 +3354,35 @@ void MainWindow::generateCustomImagePoints()
             ];
 
 
-            // No candidate in this cell yet.
+            // =================================================
+            // FIRST CANDIDATE
+            // =================================================
+
             if (existing == -1) {
 
+                Candidate candidate;
+
+
+                candidate.point =
+                    QPointF(
+                        static_cast<double>(x) /
+                            static_cast<double>(width - 1),
+
+                        static_cast<double>(y) /
+                            static_cast<double>(height - 1)
+                        );
+
+
+                candidate.strength =
+                    strength;
+
+
+                candidate.edgeStrength =
+                    strength;
+
+
                 candidates.push_back(
-                    {
-                        QPointF(
-                            static_cast<double>(x) /
-                                static_cast<double>(width - 1),
-
-                            static_cast<double>(y) /
-                                static_cast<double>(height - 1)
-                            ),
-
-                        strength
-                    }
+                    candidate
                     );
 
 
@@ -3159,10 +3394,13 @@ void MainWindow::generateCustomImagePoints()
                     static_cast<int>(
                         candidates.size() - 1
                         );
-
             }
-            // Replace the existing point if this pixel
-            // has a stronger edge.
+
+
+            // =================================================
+            // STRONGER CANDIDATE
+            // =================================================
+
             else if (
                 strength >
                 candidates[
@@ -3172,22 +3410,30 @@ void MainWindow::generateCustomImagePoints()
             ].strength
                 ) {
 
-                candidates[
-                    static_cast<std::size_t>(
-                        existing
-                        )
-                ] =
-                    {
-                        QPointF(
-                            static_cast<double>(x) /
-                                static_cast<double>(width - 1),
+                Candidate& candidate =
+                    candidates[
+                        static_cast<std::size_t>(
+                            existing
+                            )
+                ];
 
-                            static_cast<double>(y) /
-                                static_cast<double>(height - 1)
-                            ),
 
-                        strength
-                    };
+                candidate.point =
+                    QPointF(
+                        static_cast<double>(x) /
+                            static_cast<double>(width - 1),
+
+                        static_cast<double>(y) /
+                            static_cast<double>(height - 1)
+                        );
+
+
+                candidate.strength =
+                    strength;
+
+
+                candidate.edgeStrength =
+                    strength;
             }
         }
     }
@@ -3195,25 +3441,30 @@ void MainWindow::generateCustomImagePoints()
 
     // =========================================================
     // FALLBACK
-    //
-    // If the image has very little detectable structure,
-    // reduce the cell size temporarily to find more points.
     // =========================================================
 
-    if (static_cast<int>(candidates.size()) < minPoints) {
+    if (static_cast<int>(candidates.size()) <
+        minPoints) {
 
         candidates.clear();
 
+
         const int fallbackCellSize =
-            std::max(2, cellSize / 2);
+            std::max(
+                2,
+                cellSize / 2
+                );
 
 
         const int fallbackCellsX =
-            (width + fallbackCellSize - 1) /
+            (width +
+             fallbackCellSize - 1) /
             fallbackCellSize;
 
+
         const int fallbackCellsY =
-            (height + fallbackCellSize - 1) /
+            (height +
+             fallbackCellSize - 1) /
             fallbackCellSize;
 
 
@@ -3239,23 +3490,26 @@ void MainWindow::generateCustomImagePoints()
                         y * width + x
                         );
 
+
                 const float strength =
                     edgeStrength[index];
 
 
-                if (strength < 0.10f)
+                if (strength < 0.07f)
                     continue;
 
 
-                const int cx =
+                const int cellX =
                     x / fallbackCellSize;
 
-                const int cy =
+
+                const int cellY =
                     y / fallbackCellSize;
 
 
                 const int cellIndex =
-                    cy * fallbackCellsX + cx;
+                    cellY * fallbackCellsX +
+                    cellX;
 
 
                 const int existing =
@@ -3268,18 +3522,29 @@ void MainWindow::generateCustomImagePoints()
 
                 if (existing == -1) {
 
+                    Candidate candidate;
+
+
+                    candidate.point =
+                        QPointF(
+                            static_cast<double>(x) /
+                                static_cast<double>(width - 1),
+
+                            static_cast<double>(y) /
+                                static_cast<double>(height - 1)
+                            );
+
+
+                    candidate.strength =
+                        strength;
+
+
+                    candidate.edgeStrength =
+                        strength;
+
+
                     candidates.push_back(
-                        {
-                            QPointF(
-                                static_cast<double>(x) /
-                                    static_cast<double>(width - 1),
-
-                                static_cast<double>(y) /
-                                    static_cast<double>(height - 1)
-                                ),
-
-                            strength
-                        }
+                        candidate
                         );
 
 
@@ -3291,8 +3556,9 @@ void MainWindow::generateCustomImagePoints()
                         static_cast<int>(
                             candidates.size() - 1
                             );
-
                 }
+
+
                 else if (
                     strength >
                     candidates[
@@ -3302,33 +3568,38 @@ void MainWindow::generateCustomImagePoints()
                 ].strength
                     ) {
 
-                    candidates[
-                        static_cast<std::size_t>(
-                            existing
-                            )
-                    ] =
-                        {
-                            QPointF(
-                                static_cast<double>(x) /
-                                    static_cast<double>(width - 1),
+                    Candidate& candidate =
+                        candidates[
+                            static_cast<std::size_t>(
+                                existing
+                                )
+                    ];
 
-                                static_cast<double>(y) /
-                                    static_cast<double>(height - 1)
-                                ),
 
-                            strength
-                        };
+                    candidate.point =
+                        QPointF(
+                            static_cast<double>(x) /
+                                static_cast<double>(width - 1),
+
+                            static_cast<double>(y) /
+                                static_cast<double>(height - 1)
+                            );
+
+
+                    candidate.strength =
+                        strength;
+
+
+                    candidate.edgeStrength =
+                        strength;
                 }
             }
         }
     }
 
+
     // =========================================================
-    // LIMIT TOTAL POINT COUNT
-    //
-    // IMPORTANT:
-    // The entire image has already been scanned.
-    // Now keep the strongest points globally.
+    // LIMIT TOTAL CANDIDATES
     // =========================================================
 
     if (static_cast<int>(candidates.size()) >
@@ -3347,40 +3618,96 @@ void MainWindow::generateCustomImagePoints()
             }
             );
 
+
         candidates.resize(
             maxPoints
             );
     }
 
-    // =========================================================
-    // SORT BY EDGE STRENGTH
-    //
-    // Stronger points are placed together.
-    // This also makes the rendering cache-friendly.
-    // =========================================================
 
     // =========================================================
-    // STORE FINAL DATA
+    // EDGE-AWARE PRIORITY
+    // =========================================================
+
+    constexpr double edgePriorityBoost =
+        0.25;
+
+
+    for (Candidate& candidate :
+         candidates) {
+
+        const double strength =
+            std::clamp(
+                static_cast<double>(
+                    candidate.strength
+                    ),
+                0.0,
+                1.0
+                );
+
+
+        const double edge =
+            std::clamp(
+                static_cast<double>(
+                    candidate.edgeStrength
+                    ),
+                0.0,
+                1.0
+                );
+
+
+        const double boost =
+            edge *
+            edgePriorityBoost *
+            (1.0 - strength);
+
+
+        candidate.strength =
+            static_cast<float>(
+                std::clamp(
+                    strength + boost,
+                    0.0,
+                    1.0
+                    )
+                );
+    }
+
+
+    // =========================================================
+    // RESERVE FINAL ARRAYS
     // =========================================================
 
     customImagePoints_.reserve(
         candidates.size()
         );
 
+
     customImagePointStrengths_.reserve(
         candidates.size()
         );
 
 
+    // =========================================================
+    // POINT DENSITY
+    // =========================================================
 
-    // ============================================================
-    // APPLY POINT DENSITY / DISTRIBUTION
-    // ============================================================
+    applyPointDensityFilter(
+        candidates
+        );
 
-    applyPointDensityFilter(candidates);
 
-    applyAdaptiveSpatialDistribution(candidates);
+    // =========================================================
+    // ADAPTIVE SPATIAL DISTRIBUTION
+    // =========================================================
 
+    applyAdaptiveSpatialDistribution(
+        candidates
+        );
+
+
+    // =========================================================
+    // STORE FINAL POINTS
+    // =========================================================
 
     for (const Candidate& candidate :
          candidates) {
@@ -3388,6 +3715,7 @@ void MainWindow::generateCustomImagePoints()
         customImagePoints_.push_back(
             candidate.point
             );
+
 
         customImagePointStrengths_.push_back(
             candidate.strength
@@ -3401,6 +3729,7 @@ void MainWindow::generateCustomImagePoints()
 
     customImageDrawIndex_ = 0;
 }
+
 
 void MainWindow::applyPointDensityFilter(
     std::vector<Candidate>& candidates)
@@ -3553,8 +3882,8 @@ void MainWindow::applyAdaptiveSpatialDistribution(
     // ADAPTIVE SPATIAL DISTRIBUTION SETTINGS
     // ========================================================
 
-    constexpr int gridWidth  = 50;
-    constexpr int gridHeight = 50;
+    constexpr int gridWidth  = 100;
+    constexpr int gridHeight = 100;
 
 
     constexpr double maxSpacing = 0.0050;
@@ -3646,7 +3975,7 @@ void MainWindow::applyAdaptiveSpatialDistribution(
 
 
     // ========================================================
-    // SORT STRONGEST FEATURES FIRST
+    // STRONGEST FEATURES FIRST
     // ========================================================
 
     std::sort(
@@ -3663,7 +3992,7 @@ void MainWindow::applyAdaptiveSpatialDistribution(
 
 
     // ========================================================
-    // ADAPTIVE FILTER
+    // ACCEPTED POINTS
     // ========================================================
 
     std::vector<Candidate> filtered;
@@ -3673,38 +4002,53 @@ void MainWindow::applyAdaptiveSpatialDistribution(
         );
 
 
+    // ========================================================
+    // SPATIAL HASH GRID
+    //
+    // Each cell stores indices of accepted points.
+    // ========================================================
+
+    std::vector<std::vector<int>> spatialGrid(
+        gridWidth * gridHeight
+        );
+
+
+    // ========================================================
+    // ADAPTIVE FILTER
+    // ========================================================
+
     for (const Candidate& candidate :
          candidates) {
 
         // ----------------------------------------------------
-        // Find cell
+        // Determine cell
         // ----------------------------------------------------
 
-        int x =
+        int cellX =
             static_cast<int>(
                 candidate.point.x() *
                 gridWidth
                 );
 
 
-        int y =
+        int cellY =
             static_cast<int>(
                 candidate.point.y() *
                 gridHeight
                 );
 
 
-        x =
+        cellX =
             std::clamp(
-                x,
+                cellX,
                 0,
                 gridWidth - 1
                 );
 
 
-        y =
+        cellY =
             std::clamp(
-                y,
+                cellY,
                 0,
                 gridHeight - 1
                 );
@@ -3712,29 +4056,121 @@ void MainWindow::applyAdaptiveSpatialDistribution(
 
         const Cell& cell =
             cells[
-                y * gridWidth + x
+                cellY * gridWidth +
+                cellX
         ];
 
 
-        // ----------------------------------------------------
-        // Local detail
-        // ----------------------------------------------------
+        // ========================================================
+        // LOCAL + NEIGHBORHOOD DETAIL
+        // ========================================================
 
-        double averageStrength =
-            cell.count > 0
-                ?
-                cell.strengthSum /
+        double neighborhoodStrength = 0.0;
+
+        double neighborhoodWeight = 0.0;
+
+
+        // --------------------------------------------------------
+        // Examine surrounding cells
+        // --------------------------------------------------------
+
+        for (int ny = -1;
+             ny <= 1;
+             ++ny) {
+
+            for (int nx = -1;
+                 nx <= 1;
+                 ++nx) {
+
+                const int neighborX =
+                    cellX + nx;
+
+                const int neighborY =
+                    cellY + ny;
+
+
+                if (neighborX < 0 ||
+                    neighborX >= gridWidth ||
+                    neighborY < 0 ||
+                    neighborY >= gridHeight) {
+
+                    continue;
+                }
+
+
+                const Cell& neighbor =
+                    cells[
+                        neighborY * gridWidth +
+                        neighborX
+                ];
+
+
+                if (neighbor.count == 0)
+                    continue;
+
+
+                // ------------------------------------------------
+                // Center cell gets highest influence.
+                // Diagonal cells get slightly less influence.
+                // ------------------------------------------------
+
+                double distance =
+                    std::sqrt(
+                        static_cast<double>(nx * nx + ny * ny)
+                        );
+
+
+                double weight =
+                    (distance == 0.0)
+                        ?
+                        1.0
+                        :
+                        1.0 / (1.0 + distance);
+
+
+                double neighborAverage =
+                    neighbor.strengthSum /
                     static_cast<double>(
-                        cell.count
-                        )
+                        neighbor.count
+                        );
+
+
+                double neighborDetail =
+                    neighborAverage * 0.70 +
+                    neighbor.maxStrength * 0.30;
+
+
+                neighborhoodStrength +=
+                    neighborDetail *
+                    weight;
+
+
+                neighborhoodWeight +=
+                    weight;
+            }
+        }
+
+
+        // --------------------------------------------------------
+        // Calculate smoothed local detail
+        // --------------------------------------------------------
+
+        double densityFactor =
+            neighborhoodWeight > 0.0
+                ?
+                neighborhoodStrength /
+                    neighborhoodWeight
                 :
                 0.0;
 
 
-        double densityFactor =
+        // --------------------------------------------------------
+        // Non-linear response
+        // --------------------------------------------------------
+
+        densityFactor =
             std::clamp(
-                averageStrength * 1.35 +
-                    cell.maxStrength * 0.65,
+                densityFactor,
                 0.0,
                 1.0
                 );
@@ -3743,10 +4179,8 @@ void MainWindow::applyAdaptiveSpatialDistribution(
         densityFactor =
             std::pow(
                 densityFactor,
-                0.75
+                0.72
                 );
-
-
         // ----------------------------------------------------
         // Adaptive spacing
         // ----------------------------------------------------
@@ -3759,7 +4193,7 @@ void MainWindow::applyAdaptiveSpatialDistribution(
 
 
         // ----------------------------------------------------
-        // Strong points receive additional protection
+        // Strong point protection
         // ----------------------------------------------------
 
         const double strength =
@@ -3786,36 +4220,105 @@ void MainWindow::applyAdaptiveSpatialDistribution(
             spacing * spacing;
 
 
-        // ----------------------------------------------------
-        // Spatial separation
-        // ----------------------------------------------------
+        // ====================================================
+        // SPATIAL GRID SEARCH
+        // ====================================================
 
         bool tooClose = false;
 
 
-        for (const Candidate& accepted :
-             filtered) {
+        // ----------------------------------------------------
+        // Convert spacing to grid-cell radius
+        // ----------------------------------------------------
 
-            const double dx =
-                candidate.point.x() -
-                accepted.point.x();
-
-
-            const double dy =
-                candidate.point.y() -
-                accepted.point.y();
-
-
-            const double distanceSquared =
-                dx * dx +
-                dy * dy;
+        const int cellRadius =
+            static_cast<int>(
+                std::ceil(
+                    spacing *
+                    gridWidth
+                    )
+                );
 
 
-            if (distanceSquared <
-                spacingSquared) {
+        const int minCellX =
+            std::max(
+                0,
+                cellX - cellRadius
+                );
 
-                tooClose = true;
-                break;
+
+        const int maxCellX =
+            std::min(
+                gridWidth - 1,
+                cellX + cellRadius
+                );
+
+
+        const int minCellY =
+            std::max(
+                0,
+                cellY - cellRadius
+                );
+
+
+        const int maxCellY =
+            std::min(
+                gridHeight - 1,
+                cellY + cellRadius
+                );
+
+
+        // ----------------------------------------------------
+        // Only inspect nearby cells
+        // ----------------------------------------------------
+
+        for (int y = minCellY;
+             y <= maxCellY && !tooClose;
+             ++y) {
+
+            for (int x = minCellX;
+                 x <= maxCellX && !tooClose;
+                 ++x) {
+
+                const auto& cellPoints =
+                    spatialGrid[
+                        y * gridWidth + x
+                ];
+
+
+                // ------------------------------------------------
+                // Check accepted points inside this cell
+                // ------------------------------------------------
+
+                for (int index :
+                     cellPoints) {
+
+                    const Candidate& accepted =
+                        filtered[index];
+
+
+                    const double dx =
+                        candidate.point.x() -
+                        accepted.point.x();
+
+
+                    const double dy =
+                        candidate.point.y() -
+                        accepted.point.y();
+
+
+                    const double distanceSquared =
+                        dx * dx +
+                        dy * dy;
+
+
+                    if (distanceSquared <
+                        spacingSquared) {
+
+                        tooClose = true;
+                        break;
+                    }
+                }
             }
         }
 
@@ -3824,9 +4327,27 @@ void MainWindow::applyAdaptiveSpatialDistribution(
             continue;
 
 
+        // ====================================================
+        // ACCEPT CANDIDATE
+        // ====================================================
+
+        const int acceptedIndex =
+            static_cast<int>(
+                filtered.size()
+                );
+
+
         filtered.push_back(
             candidate
             );
+
+
+        spatialGrid[
+            cellY * gridWidth +
+            cellX
+        ].push_back(
+                acceptedIndex
+                );
     }
 
 
