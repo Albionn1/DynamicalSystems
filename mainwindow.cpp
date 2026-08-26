@@ -3377,14 +3377,10 @@ void MainWindow::generateCustomImagePoints()
     // APPLY POINT DENSITY / DISTRIBUTION
     // ============================================================
 
-    applyPointDensityFilter(
-        candidates
-        );
+    applyPointDensityFilter(candidates);
 
+    applyAdaptiveSpatialDistribution(candidates);
 
-    // ============================================================
-    // COPY FILTERED CANDIDATES
-    // ============================================================
 
     for (const Candidate& candidate :
          candidates) {
@@ -3534,6 +3530,8 @@ void MainWindow::applyPointDensityFilter(
         );
 }
 
+
+
 void MainWindow::updateVisualizationCenter(const QSize& size)
 {
     center_ = QPointF(
@@ -3544,6 +3542,302 @@ void MainWindow::updateVisualizationCenter(const QSize& size)
     formulaNeedsUpdate_ = true;
 }
 
+void MainWindow::applyAdaptiveSpatialDistribution(
+    std::vector<Candidate>& candidates)
+{
+    if (candidates.empty())
+        return;
+
+
+    // ========================================================
+    // ADAPTIVE SPATIAL DISTRIBUTION SETTINGS
+    // ========================================================
+
+    constexpr int gridWidth  = 50;
+    constexpr int gridHeight = 50;
+
+
+    constexpr double maxSpacing = 0.0050;
+    constexpr double minSpacing = 0.0012;
+
+
+    // ========================================================
+    // CELL STRUCTURE
+    // ========================================================
+
+    struct Cell
+    {
+        double strengthSum = 0.0;
+        double maxStrength  = 0.0;
+        int count           = 0;
+    };
+
+
+    std::vector<Cell> cells(
+        gridWidth * gridHeight
+        );
+
+
+    // ========================================================
+    // MEASURE LOCAL DETAIL
+    // ========================================================
+
+    for (const Candidate& candidate :
+         candidates) {
+
+        int x =
+            static_cast<int>(
+                candidate.point.x() *
+                gridWidth
+                );
+
+        int y =
+            static_cast<int>(
+                candidate.point.y() *
+                gridHeight
+                );
+
+
+        x =
+            std::clamp(
+                x,
+                0,
+                gridWidth - 1
+                );
+
+
+        y =
+            std::clamp(
+                y,
+                0,
+                gridHeight - 1
+                );
+
+
+        Cell& cell =
+            cells[
+                y * gridWidth + x
+        ];
+
+
+        const double strength =
+            std::clamp(
+                static_cast<double>(
+                    candidate.strength
+                    ),
+                0.0,
+                1.0
+                );
+
+
+        cell.strengthSum +=
+            strength;
+
+
+        cell.maxStrength =
+            std::max(
+                cell.maxStrength,
+                strength
+                );
+
+
+        cell.count++;
+    }
+
+
+    // ========================================================
+    // SORT STRONGEST FEATURES FIRST
+    // ========================================================
+
+    std::sort(
+        candidates.begin(),
+        candidates.end(),
+
+        [](const Candidate& a,
+           const Candidate& b)
+        {
+            return a.strength >
+                   b.strength;
+        }
+        );
+
+
+    // ========================================================
+    // ADAPTIVE FILTER
+    // ========================================================
+
+    std::vector<Candidate> filtered;
+
+    filtered.reserve(
+        candidates.size()
+        );
+
+
+    for (const Candidate& candidate :
+         candidates) {
+
+        // ----------------------------------------------------
+        // Find cell
+        // ----------------------------------------------------
+
+        int x =
+            static_cast<int>(
+                candidate.point.x() *
+                gridWidth
+                );
+
+
+        int y =
+            static_cast<int>(
+                candidate.point.y() *
+                gridHeight
+                );
+
+
+        x =
+            std::clamp(
+                x,
+                0,
+                gridWidth - 1
+                );
+
+
+        y =
+            std::clamp(
+                y,
+                0,
+                gridHeight - 1
+                );
+
+
+        const Cell& cell =
+            cells[
+                y * gridWidth + x
+        ];
+
+
+        // ----------------------------------------------------
+        // Local detail
+        // ----------------------------------------------------
+
+        double averageStrength =
+            cell.count > 0
+                ?
+                cell.strengthSum /
+                    static_cast<double>(
+                        cell.count
+                        )
+                :
+                0.0;
+
+
+        double densityFactor =
+            std::clamp(
+                averageStrength * 1.35 +
+                    cell.maxStrength * 0.65,
+                0.0,
+                1.0
+                );
+
+
+        densityFactor =
+            std::pow(
+                densityFactor,
+                0.75
+                );
+
+
+        // ----------------------------------------------------
+        // Adaptive spacing
+        // ----------------------------------------------------
+
+        double spacing =
+            maxSpacing -
+            densityFactor *
+                (maxSpacing -
+                 minSpacing);
+
+
+        // ----------------------------------------------------
+        // Strong points receive additional protection
+        // ----------------------------------------------------
+
+        const double strength =
+            std::clamp(
+                static_cast<double>(
+                    candidate.strength
+                    ),
+                0.0,
+                1.0
+                );
+
+
+        if (strength > 0.80)
+        {
+            spacing *= 0.75;
+        }
+        else if (strength > 0.65)
+        {
+            spacing *= 0.88;
+        }
+
+
+        const double spacingSquared =
+            spacing * spacing;
+
+
+        // ----------------------------------------------------
+        // Spatial separation
+        // ----------------------------------------------------
+
+        bool tooClose = false;
+
+
+        for (const Candidate& accepted :
+             filtered) {
+
+            const double dx =
+                candidate.point.x() -
+                accepted.point.x();
+
+
+            const double dy =
+                candidate.point.y() -
+                accepted.point.y();
+
+
+            const double distanceSquared =
+                dx * dx +
+                dy * dy;
+
+
+            if (distanceSquared <
+                spacingSquared) {
+
+                tooClose = true;
+                break;
+            }
+        }
+
+
+        if (tooClose)
+            continue;
+
+
+        filtered.push_back(
+            candidate
+            );
+    }
+
+
+    // ========================================================
+    // REPLACE
+    // ========================================================
+
+    candidates.swap(
+        filtered
+        );
+}
 
 void MainWindow::resizeEvent(QResizeEvent* event)
 {

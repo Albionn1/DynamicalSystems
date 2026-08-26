@@ -50,6 +50,7 @@ public:
     void loadCustomImage();
     void generateCustomImagePoints();
     void applyPointDensityFilter(std::vector<Candidate>& candidates);
+    void applyAdaptiveSpatialDistribution(std::vector<Candidate>& candidates);
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
