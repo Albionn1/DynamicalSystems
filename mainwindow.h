@@ -51,6 +51,7 @@ protected:
 private:
     QImage customImage_;
     std::vector<QPointF> customImagePoints_;
+    std::vector<float> customImagePointStrengths_;
 
     // Current animated particle positions.
     std::vector<QPointF> customImageParticlePositions_;
@@ -63,10 +64,47 @@ private:
     int customImageWidth_ = 400;
     int customImageHeight_ = 400;
 
-    double customImageStrength_ = 2.0;
+    // double customImageStrength_ = 2.0;
 
     double customImageAnimationTime_ = 0.0;
 
+    // ---------------------------------------------------------
+    // Custom Image drawing
+    // ---------------------------------------------------------
+
+    std::size_t customImageDrawIndex_ = 0;
+
+    bool customImageDrawingFinished_ = false;
+
+    double customImageDrawSpeed_ = 8.0;
+
+    // =========================================================
+    // CUSTOM IMAGE DYNAMICAL SYSTEM
+    // =========================================================
+
+    // Strength pulling particles toward the image attractor.
+    double customImageAttraction_ = 1.35;
+
+    // Tangential/curl component.
+    double customImageCurl_ = 0.42;
+
+    // Nonlinear field strength.
+    double customImageNonlinear_ = 0.22;
+
+    // Time-dependent perturbation.
+    double customImageChaos_ = 0.08;
+
+    // Particle damping.
+    double customImageDamping_ = 0.985;
+
+    // Maximum normalized particle velocity.
+    double customImageMaxVelocity_ = 0.045;
+
+    // Distance at which the image attraction starts becoming dominant.
+    double customImageInfluenceRadius_ = 0.12;
+
+    // Trail for every image particle
+    std::vector<std::vector<QPointF>> customImageTrails_;
 
 private:
 

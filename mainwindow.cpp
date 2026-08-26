@@ -1,16 +1,22 @@
 #include "mainwindow.h"
 #include "helpdialog.h"
 #include "initialconditionsdialog.h"
+
 #include <QPainter>
 #include <QKeyEvent>
 #include <QFileDialog>
 #include <QDateTime>
 #include <QPixmap>
 #include <QMessageBox>
-#include <cmath>
-#include <deque>
 #include <QSvgRenderer>
 #include <QWidget>
+
+#include <algorithm>
+#include <cmath>
+#include <deque>
+#include <limits>
+#include <vector>
+#include <random>
 
 // Visualization Widget class
 class VisualizationWidget : public QWidget {
@@ -152,208 +158,45 @@ MainWindow::MainWindow(QWidget* parent)
 
                 if (simulationActive_) {
 
-                    // -------------------------------------------------
-                    // Custom Image particle animation
-                    // -------------------------------------------------
-                    // -------------------------------------------------
-                    // Custom Image particle animation
-                    // -------------------------------------------------
+                    // ---------------------------------------------------------
+                    // Custom Image drawing animation
+                    // ---------------------------------------------------------
+
                     if (customImageActive_) {
 
-                        const double particleDt = 0.035;
+                        if (!customImageDrawingFinished_) {
 
-                        // ---------------------------------------------------------
-                        // Flow parameters
-                        // ---------------------------------------------------------
-                        const double attractionStrength = 1.10;
-                        const double flowStrength       = 0.45;
-                        const double swirlStrength      = 0.18;
-                        const double damping            = 0.975;
+                            // Draw a few points every frame.
+                            customImageDrawIndex_ +=
+                                static_cast<std::size_t>(
+                                    customImageDrawSpeed_
+                                    );
 
-                        // ---------------------------------------------------------
-                        // Particle dynamics
-                        // ---------------------------------------------------------
-                        for (std::size_t i = 0;
-                             i < customImageParticlePositions_.size();
-                             ++i) {
+                            if (customImageDrawIndex_ >=
+                                customImagePoints_.size()) {
 
-                            if (i >= customImagePoints_.size() ||
-                                i >= customImageParticleVelocities_.size()) {
-                                break;
+                                customImageDrawIndex_ =
+                                    customImagePoints_.size();
+
+                                customImageDrawingFinished_ = true;
                             }
-
-                            QPointF& position =
-                                customImageParticlePositions_[i];
-
-                            QPointF& velocity =
-                                customImageParticleVelocities_[i];
-
-                            const QPointF& attractor =
-                                customImagePoints_[i];
-
-                            // -----------------------------------------------------
-                            // 1. Attraction toward the original image structure
-                            // -----------------------------------------------------
-
-                            const double dx =
-                                attractor.x() - position.x();
-
-                            const double dy =
-                                attractor.y() - position.y();
-
-                            velocity.rx() +=
-                                dx * attractionStrength * particleDt;
-
-                            velocity.ry() +=
-                                dy * attractionStrength * particleDt;
-
-
-                            // -----------------------------------------------------
-                            // 2. Local image flow
-                            //
-                            // Instead of every particle behaving independently,
-                            // look at nearby detected image points and use their
-                            // direction to create a local vector field.
-                            // -----------------------------------------------------
-
-                            QPointF flow(0.0, 0.0);
-
-                            const double searchRadius = 0.055;
-                            const double radiusSq =
-                                searchRadius * searchRadius;
-
-                            int neighbours = 0;
-
-                            // Sample only a limited number of points around the
-                            // particle to keep the animation reasonably fast.
-                            const std::size_t sampleStep =
-                                customImagePoints_.size() > 1500 ? 6 : 1;
-
-                            for (std::size_t j = 0;
-                                 j < customImagePoints_.size();
-                                 j += sampleStep) {
-
-                                const QPointF& point =
-                                    customImagePoints_[j];
-
-                                const double px =
-                                    point.x() - position.x();
-
-                                const double py =
-                                    point.y() - position.y();
-
-                                const double distanceSq =
-                                    px * px + py * py;
-
-                                if (distanceSq <= 0.000001 ||
-                                    distanceSq > radiusSq) {
-                                    continue;
-                                }
-
-                                const double distance =
-                                    std::sqrt(distanceSq);
-
-                                // -------------------------------------------------
-                                // Tangential flow around nearby image points
-                                // -------------------------------------------------
-
-                                const double tangentX =
-                                    -py / distance;
-
-                                const double tangentY =
-                                    px / distance;
-
-                                // Closer points have stronger influence.
-                                const double weight =
-                                    1.0 -
-                                    (distance / searchRadius);
-
-                                flow.rx() += tangentX * weight;
-                                flow.ry() += tangentY * weight;
-
-                                ++neighbours;
-                            }
-
-                            if (neighbours > 0) {
-
-                                flow.rx() /= static_cast<double>(neighbours);
-                                flow.ry() /= static_cast<double>(neighbours);
-
-                                velocity.rx() +=
-                                    flow.x() * flowStrength * particleDt;
-
-                                velocity.ry() +=
-                                    flow.y() * flowStrength * particleDt;
-                            }
-
-
-                            // -----------------------------------------------------
-                            // 3. Global rotational field
-                            //
-                            // Gives the whole image a subtle dynamical-system
-                            // character instead of looking like a simple particle
-                            // emitter.
-                            // -----------------------------------------------------
-
-                            const double cx = 0.5;
-                            const double cy = 0.5;
-
-                            const double rx =
-                                position.x() - cx;
-
-                            const double ry =
-                                position.y() - cy;
-
-                            velocity.rx() +=
-                                -ry * swirlStrength * particleDt;
-
-                            velocity.ry() +=
-                                rx * swirlStrength * particleDt;
-
-                            // -----------------------------------------------------
-                            // 4. Damping
-                            // -----------------------------------------------------
-
-                            velocity *= damping;
-
-
-                            // -----------------------------------------------------
-                            // 5. Integrate
-                            // -----------------------------------------------------
-
-                            position.rx() +=
-                                velocity.x() * particleDt;
-
-                            position.ry() +=
-                                velocity.y() * particleDt;
-
-
-                            // -----------------------------------------------------
-                            // 6. Soft wrapping
-                            //
-                            // Instead of clamping particles to the edge, wrap them
-                            // around. This makes the field continuous.
-                            // -----------------------------------------------------
-
-                            // ---------------------------------------------------------
-                            // Continuous wrapping
-                            // ---------------------------------------------------------
-                            position.rx() =
-                                position.x() - std::floor(position.x());
-
-                            position.ry() =
-                                position.y() - std::floor(position.y());
                         }
-
-                        customImageAnimationTime_ += particleDt;
                     }
 
                     // -------------------------------------------------
                     // Normal dynamical-system simulation
                     // -------------------------------------------------
-                    for (int i = 0; i < substeps_; ++i)
-                        step();
+                    for (int i = 0;
+                         i < substeps_;
+                         ++i) {
 
+                        step();
+                    }
+
+
+                    // -------------------------------------------------
+                    // Request repaint
+                    // -------------------------------------------------
                     if (visualizationWidget_)
                         visualizationWidget_->update();
                 }
@@ -361,7 +204,6 @@ MainWindow::MainWindow(QWidget* parent)
 
     timer_.start(16);
 }
-
 
 void MainWindow::createSidebar()
 {
@@ -774,69 +616,80 @@ void MainWindow::createSidebarButton(
 }
 
 
-void MainWindow::resetState() {
+void MainWindow::resetState()
+{
     trail_.clear();
+
     poincarePoints_.clear();
+
+
+    // ---------------------------------------------------------
+    // Reset custom image animation
+    // ---------------------------------------------------------
+
     if (customImageActive_) {
 
-        customImageParticlePositions_.clear();
+        customImageDrawIndex_ = 0;
 
-        customImageParticlePositions_.reserve(
-            customImagePoints_.size()
-            );
-
-        for (std::size_t i = 0;
-             i < customImagePoints_.size();
-             ++i) {
-
-            const QPointF& p =
-                customImagePoints_[i];
-
-            const double phase =
-                static_cast<double>(i) * 0.73;
-
-            const double radius =
-                0.025 +
-                0.015 *
-                    (0.5 + 0.5 * std::sin(phase));
-
-            QPointF particle(
-                p.x() + std::cos(phase) * radius,
-                p.y() + std::sin(phase) * radius
-                );
-
-            particle.rx() =
-                std::clamp(particle.x(), 0.0, 1.0);
-
-            particle.ry() =
-                std::clamp(particle.y(), 0.0, 1.0);
-
-            customImageParticlePositions_.push_back(
-                particle
-                );
-        }
-
-        customImageParticleVelocities_.assign(
-            customImagePoints_.size(),
-            QPointF(0.0, 0.0)
-            );
+        customImageDrawingFinished_ = false;
 
         customImageAnimationTime_ = 0.0;
     }
+
+
+    // ---------------------------------------------------------
+    // Normal dynamical systems
+    // ---------------------------------------------------------
+
     if (dims_ == 3) {
-        state_ = { 0.0, 1.0, 20.0 };
-        // Warmup integration to estimate a sensible Poincare plane (mean z)
+
+        state_ = {
+            0.0,
+            1.0,
+            20.0
+        };
+
+
         Vec tmp = state_;
+
+
         double sumz = 0.0;
-        const int warmSteps = 1000;
-        for (int i = 0; i < warmSteps; ++i) {
-            rk4_step(system_, tmp, dt_);
+
+
+        const int warmSteps =
+            1000;
+
+
+        for (int i = 0;
+             i < warmSteps;
+             ++i) {
+
+            rk4_step(
+                system_,
+                tmp,
+                dt_
+                );
+
+
             sumz += tmp[2];
         }
-        poincarePlane_ = sumz / double(warmSteps);
+
+
+        poincarePlane_ =
+            sumz /
+            double(warmSteps);
+
+
     } else if (dims_ == 2) {
-        state_ = { 1.0, 0.0 };
+
+        state_ = {
+            1.0,
+            0.0
+        };
+
+
     } else if (dims_ == 4) {
+
         state_ = {
             M_PI / 2.0,
             0.0,
@@ -844,7 +697,6 @@ void MainWindow::resetState() {
             0.0
         };
     }
-
 }
 
 void MainWindow::step() {
@@ -952,59 +804,172 @@ QPointF MainWindow::project(const Vec& x)
     return center_;
 }
 
+void MainWindow::paintVisualization(
+    QPainter* p,
+    const QRect& rect)
+{
+    // =========================================================
+    // BACKGROUND
+    // =========================================================
 
-void MainWindow::paintVisualization(QPainter* p, const QRect& rect) {
-    QLinearGradient bg(rect.topLeft(), rect.bottomLeft());
-    bg.setColorAt(0.0, QColor(30, 30, 35));
-    bg.setColorAt(0.5, QColor(25, 25, 30));
-    bg.setColorAt(1.0, QColor(20, 20, 25));
+    QLinearGradient bg(
+        rect.topLeft(),
+        rect.bottomLeft()
+        );
 
-    p->fillRect(rect, bg);
-    p->setRenderHint(QPainter::Antialiasing, true);
+    bg.setColorAt(
+        0.0,
+        QColor(30, 30, 35)
+        );
+
+    bg.setColorAt(
+        0.5,
+        QColor(25, 25, 30)
+        );
+
+    bg.setColorAt(
+        1.0,
+        QColor(20, 20, 25)
+        );
+
+
+    p->fillRect(
+        rect,
+        bg
+        );
+
+
+    // =========================================================
+    // GENERAL ANTIALIASING
+    // =========================================================
+
+    p->setRenderHint(
+        QPainter::Antialiasing,
+        true
+        );
+
+
+    // =========================================================
+    // GRID
+    // =========================================================
 
     if (gridEnabled_) {
-        p->setPen(QPen(QColor(50, 50, 55), 1));
-        for (int x = 0; x < rect.width(); x += 50) p->drawLine(x, 0, x, rect.height());
-        for (int y = 0; y < rect.height(); y += 50) p->drawLine(0, y, rect.width(), y);
+
+        p->setPen(
+            QPen(
+                QColor(50, 50, 55),
+                1
+                )
+            );
+
+
+        for (int x = 0;
+             x < rect.width();
+             x += 50) {
+
+            p->drawLine(
+                x,
+                0,
+                x,
+                rect.height()
+                );
+        }
+
+
+        for (int y = 0;
+             y < rect.height();
+             y += 50) {
+
+            p->drawLine(
+                0,
+                y,
+                rect.width(),
+                y
+                );
+        }
     }
 
-    // ---------------------------------------------------------
-    // Custom Image System
-    // ---------------------------------------------------------
-    if (customImageActive_ && !customImage_.isNull()) {
 
-        QSize imageSize = customImage_.size();
+    // =========================================================
+    // CUSTOM IMAGE
+    // =========================================================
 
-        double maxWidth  = rect.width() * 0.70;
-        double maxHeight = rect.height() * 0.70;
+    if (customImageActive_ &&
+        !customImage_.isNull()) {
 
-        double scaleFactor = std::min(
-            maxWidth / static_cast<double>(imageSize.width()),
-            maxHeight / static_cast<double>(imageSize.height())
-            );
+
+        // -----------------------------------------------------
+        // Calculate image size
+        // -----------------------------------------------------
+
+        QSize imageSize =
+            customImage_.size();
+
+
+        const double maxWidth =
+            rect.width() * 0.70;
+
+
+        const double maxHeight =
+            rect.height() * 0.70;
+
+
+        const double scaleFactor =
+            std::min(
+                maxWidth /
+                    static_cast<double>(
+                        imageSize.width()
+                        ),
+
+                maxHeight /
+                    static_cast<double>(
+                        imageSize.height()
+                        )
+                );
+
 
         QSize targetSize(
-            static_cast<int>(imageSize.width() * scaleFactor),
-            static_cast<int>(imageSize.height() * scaleFactor)
+            static_cast<int>(
+                imageSize.width() *
+                scaleFactor
+                ),
+
+            static_cast<int>(
+                imageSize.height() *
+                scaleFactor
+                )
             );
+
+
+        // -----------------------------------------------------
+        // Center image
+        // -----------------------------------------------------
 
         QRect targetRect(
             static_cast<int>(
-                center_.x() - targetSize.width() / 2.0
+                center_.x() -
+                targetSize.width() / 2.0
                 ),
+
             static_cast<int>(
-                center_.y() - targetSize.height() / 2.0
+                center_.y() -
+                targetSize.height() / 2.0
                 ),
+
             targetSize.width(),
             targetSize.height()
             );
 
-        // -----------------------------------------------------
-        // Draw the original image as a very faint reference layer.
-        // -----------------------------------------------------
+
+        // =====================================================
+        // FAINT ORIGINAL IMAGE
+        // =====================================================
+
         p->save();
 
-        p->setOpacity(0.16);
+        p->setOpacity(
+            0.15
+            );
 
         p->drawImage(
             targetRect,
@@ -1013,402 +978,983 @@ void MainWindow::paintVisualization(QPainter* p, const QRect& rect) {
 
         p->restore();
 
+
+        // =====================================================
+        // CUSTOM IMAGE POINT DRAWING
+        // =====================================================
+
+        // Disable antialiasing for the large number of
+        // tiny primitives used by the image visualization.
+        p->setRenderHint(
+            QPainter::Antialiasing,
+            false
+            );
+
+
         // -----------------------------------------------------
-        // Draw detected points ON TOP of the image
+        // Make sure the cached strength array matches the
+        // point array. This protects against invalid access
+        // if an older image generation is still around.
         // -----------------------------------------------------
-        p->setPen(Qt::NoPen);
-        p->setBrush(QColor("#00d4ff"));
 
-        for (std::size_t i = 0;
-             i < customImageParticlePositions_.size();
-             ++i) {
-
-            if (i >= customImagePoints_.size())
-                break;
-
-            const QPointF& position =
-                customImageParticlePositions_[i];
-
-            // ---------------------------------------------------------
-            // Convert normalized particle position to screen position.
-            // ---------------------------------------------------------
-            const double screenX =
-                targetRect.left() +
-                position.x() * targetRect.width();
-
-            const double screenY =
-                targetRect.top() +
-                position.y() * targetRect.height();
-
-            const QPointF screenPoint(
-                screenX,
-                screenY
-                );
-            // ---------------------------------------------------------
-            // Motion trail
-            // ---------------------------------------------------------
-            // if (i < customImageParticleVelocities_.size()) {
-
-            //     const QPointF& velocity =
-            //         customImageParticleVelocities_[i];
-
-            //     const double trailScale = 18.0;
-
-            //     QPointF trailPoint(
-            //         screenX -
-            //             velocity.x() *
-            //                 targetRect.width() *
-            //                 trailScale,
-
-            //         screenY -
-            //             velocity.y() *
-            //                 targetRect.height() *
-            //                 trailScale
-            //         );
-
-            //     QColor trailColor("#00d4ff");
-            //     trailColor.setAlpha(45);
-
-            //     p->setPen(
-            //         QPen(
-            //             trailColor,
-            //             1.0
-            //             )
-            //         );
-
-            //     p->drawLine(
-            //         trailPoint,
-            //         screenPoint
-            //         );
-
-            //     p->setPen(Qt::NoPen);
-            // }
-            // ---------------------------------------------------------
-            // Distance from the original image feature.
-            //
-            // Used to make particles glow slightly more when they
-            // are displaced from their attractor.
-            // ---------------------------------------------------------
-            const QPointF& attractor =
-                customImagePoints_[i];
-
-            const double dx =
-                position.x() - attractor.x();
-
-            const double dy =
-                position.y() - attractor.y();
-
-            const double distance =
-                std::sqrt(
-                    dx * dx +
-                    dy * dy
-                    );
-
-            const double normalizedDistance =
-                std::clamp(
-                    distance * 25.0,
-                    0.0,
-                    1.0
-                    );
-
-            // ---------------------------------------------------------
-            // Particle pulse.
-            // ---------------------------------------------------------
-            const double phase =
-                customImageAnimationTime_ +
-                static_cast<double>(i) * 0.37;
-
-            const double pulse =
-                0.5 +
-                0.5 * std::sin(
-                    phase * 1.4
-                    );
-
-            // ---------------------------------------------------------
-            // Glow becomes slightly stronger when the particle is
-            // moving away from its attractor.
-            // ---------------------------------------------------------
-            const int glowAlpha =
-                static_cast<int>(
-                    20.0 +
-                    pulse * 18.0 +
-                    normalizedDistance * 15.0
-                    );
-
-            const double glowRadius =
-                2.5 +
-                pulse * 1.0 +
-                normalizedDistance * 1.0;
-
-            QColor glow("#00d4ff");
-            glow.setAlpha(glowAlpha);
-
-            p->setBrush(glow);
-
-            p->drawEllipse(
-                screenPoint,
-                glowRadius,
-                glowRadius
+        const std::size_t pointCount =
+            std::min(
+                customImagePoints_.size(),
+                customImagePointStrengths_.size()
                 );
 
-            // ---------------------------------------------------------
-            // Main particle.
-            // ---------------------------------------------------------
-            const double particleRadius =
-                1.1 +
-                pulse * 0.4;
 
-            p->setBrush(
-                QColor("#00d4ff")
-                );
+        if (pointCount > 1) {
 
-            p->drawEllipse(
-                screenPoint,
-                particleRadius,
-                particleRadius
-                );
+
+            // -------------------------------------------------
+            // Determine how many points are currently visible
+            // -------------------------------------------------
+
+            const std::size_t count =
+                std::min(
+                    customImageDrawIndex_,
+                    pointCount
+                    );
+
+
+            if (count > 0) {
+
+                p->setPen(Qt::NoPen);
+
+                for (std::size_t i = 0; i < count; ++i) {
+
+                    const float strength =
+                        customImagePointStrengths_[i];
+
+                    const QPointF& point =
+                        customImagePoints_[i];
+
+                    QPointF screenPoint(
+                        targetRect.left() +
+                            point.x() * targetRect.width(),
+
+                        targetRect.top() +
+                            point.y() * targetRect.height()
+                        );
+
+                    int alpha =
+                        static_cast<int>(
+                            40.0f +
+                            strength * 215.0f
+                            );
+
+                    alpha = std::clamp(alpha, 0, 255);
+
+                    p->setBrush(
+                        QColor(
+                            0,
+                            212,
+                            255,
+                            alpha
+                            )
+                        );
+
+                    double radius =
+                        0.7 +
+                        strength * 1.3;
+
+                    p->drawEllipse(
+                        screenPoint,
+                        radius,
+                        radius
+                        );
+                }
+            }
+
+
+            // =================================================
+            // DRAW DOTS
+            // =================================================
+
+            if (count > 0) {
+
+                p->setPen(
+                    Qt::NoPen
+                    );
+
+
+                // -------------------------------------------------
+                // Strong points
+                // -------------------------------------------------
+
+                p->setBrush(
+                    QColor(
+                        0,
+                        212,
+                        255,
+                        150
+                        )
+                    );
+
+
+                for (std::size_t i = 0;
+                     i < count;
+                     ++i) {
+
+                    const float strength =
+                        customImagePointStrengths_[i];
+
+
+                    if (strength < 0.55f)
+                        continue;
+
+
+                    const QPointF& point =
+                        customImagePoints_[i];
+
+
+                    QPointF screenPoint(
+                        targetRect.left() +
+                            point.x() *
+                                targetRect.width(),
+
+                        targetRect.top() +
+                            point.y() *
+                                targetRect.height()
+                        );
+
+
+                    p->drawEllipse(
+                        screenPoint,
+                        1.25,
+                        1.25
+                        );
+                }
+
+
+                // -------------------------------------------------
+                // Very strong points
+                // -------------------------------------------------
+
+                p->setBrush(
+                    QColor(
+                        0,
+                        230,
+                        255,
+                        230
+                        )
+                    );
+
+
+                for (std::size_t i = 0;
+                     i < count;
+                     ++i) {
+
+                    const float strength =
+                        customImagePointStrengths_[i];
+
+
+                    if (strength < 0.80f)
+                        continue;
+
+
+                    const QPointF& point =
+                        customImagePoints_[i];
+
+
+                    QPointF screenPoint(
+                        targetRect.left() +
+                            point.x() *
+                                targetRect.width(),
+
+                        targetRect.top() +
+                            point.y() *
+                                targetRect.height()
+                        );
+
+
+                    p->drawEllipse(
+                        screenPoint,
+                        1.6,
+                        1.6
+                        );
+                }
+            }
         }
 
-        // -----------------------------------------------------
-        // HUD
-        // -----------------------------------------------------
-        p->setPen(QColor(220, 220, 230));
-        p->setFont(QFont("Monospace", 10));
+
+        // =====================================================
+        // CUSTOM IMAGE HUD
+        // =====================================================
+
+        p->setPen(
+            QColor(
+                220,
+                220,
+                230
+                )
+            );
+
+
+        p->setFont(
+            QFont(
+                "Monospace",
+                10
+                )
+            );
+
+
+        const std::size_t visibleCount =
+            std::min(
+                customImageDrawIndex_,
+                pointCount
+                );
+
 
         p->drawText(
             10,
             20,
-            QString("System: Custom Image | Points: %1")
-                .arg(customImagePoints_.size())
+
+            QString(
+                "System: Custom Image | Points: %1/%2"
+                )
+                .arg(
+                    visibleCount
+                    )
+                .arg(
+                    pointCount
+                    )
             );
+
+
+        // =====================================================
+        // STOP HERE
+        //
+        // We do NOT draw the Lorenz/Rössler/Pendulum trail.
+        // =====================================================
 
         return;
     }
 
 
-    // Trail rendering
-    if ((drawMode_ == DrawMode::Trail || drawMode_ == DrawMode::Both) && trail_.size() > 1) {
-        for (int i = 1; i < trail_.size(); ++i) {
-            double t = double(i) / trail_.size();
+    // =========================================================
+    // NORMAL DYNAMICAL SYSTEM TRAIL
+    // =========================================================
+
+    if (
+        (drawMode_ == DrawMode::Trail ||
+         drawMode_ == DrawMode::Both)
+        &&
+        trail_.size() > 1
+        ) {
+
+
+        for (int i = 1;
+             i < trail_.size();
+             ++i) {
+
+
+            double t =
+                double(i) /
+                trail_.size();
+
+
             QColor c;
-            if (colorMode_ == 0) { // time gradient
-                c = QColor::fromHsvF(t, 1.0, 1.0, fadingEnabled_ ? (0.2 + 0.8*(1.0 - t)) : 1.0);
-            } else { // speed coloring
-                double dx = trail_[i].x() - trail_[i-1].x();
-                double dy = trail_[i].y() - trail_[i-1].y();
-                double speed = std::sqrt(dx*dx + dy*dy);
-                double s = std::min(speed / 10.0, 1.0);
-                c = QColor::fromHsvF(0.3 + 0.7*s, 1.0, 1.0, fadingEnabled_ ? (0.2 + 0.8*(1.0 - t)) : 1.0);
+
+
+            if (colorMode_ == 0) {
+
+                c =
+                    QColor::fromHsvF(
+                        t,
+                        1.0,
+                        1.0,
+
+                        fadingEnabled_
+                            ?
+                            (0.2 +
+                             0.8 *
+                                 (1.0 - t))
+                            :
+                            1.0
+                        );
+
+            } else {
+
+                double dx =
+                    trail_[i].x() -
+                    trail_[i - 1].x();
+
+
+                double dy =
+                    trail_[i].y() -
+                    trail_[i - 1].y();
+
+
+                double speed =
+                    std::sqrt(
+                        dx * dx +
+                        dy * dy
+                        );
+
+
+                double s =
+                    std::min(
+                        speed / 10.0,
+                        1.0
+                        );
+
+
+                c =
+                    QColor::fromHsvF(
+                        0.3 +
+                            0.7 * s,
+
+                        1.0,
+                        1.0,
+
+                        fadingEnabled_
+                            ?
+                            (0.2 +
+                             0.8 *
+                                 (1.0 - t))
+                            :
+                            1.0
+                        );
             }
-            p->setPen(QPen(c, 2));
-            p->drawLine(trail_[i-1], trail_[i]);
+
+
+            p->setPen(
+                QPen(
+                    c,
+                    2
+                    )
+                );
+
+
+            p->drawLine(
+                trail_[i - 1],
+                trail_[i]
+                );
         }
     }
 
-    // Poincare section points
-    if (drawMode_ == DrawMode::Poincare || drawMode_ == DrawMode::Both) {
-        for (const auto& crossing : poincarePoints_) {
-            QColor col = crossing.upward ? QColor("#00aaff")  // for upward
-                                         : QColor("#ffffff");  // for downward
 
-            int alpha = static_cast<int>(255 * std::exp(-crossing.age * 0.005));
-            col.setAlpha(alpha);
+    // =========================================================
+    // POINCARÉ SECTION
+    // =========================================================
 
-            // inner dot
-            p->setPen(Qt::NoPen);
-            p->setBrush(col);
-            p->drawEllipse(crossing.pos, 3, 3);
+    if (
+        drawMode_ == DrawMode::Poincare ||
+        drawMode_ == DrawMode::Both
+        ) {
 
-            QColor halo = col;
-            halo.setAlpha(alpha / 3);
-            p->setBrush(halo);
-            p->drawEllipse(crossing.pos, 6, 6);
+
+        for (
+            const auto& crossing :
+            poincarePoints_
+            ) {
+
+
+            QColor col =
+                crossing.upward
+                    ?
+                    QColor("#00aaff")
+                    :
+                    QColor("#ffffff");
+
+
+            int alpha =
+                static_cast<int>(
+                    255 *
+                    std::exp(
+                        -crossing.age *
+                        0.005
+                        )
+                    );
+
+
+            col.setAlpha(
+                alpha
+                );
+
+
+            p->setPen(
+                Qt::NoPen
+                );
+
+
+            p->setBrush(
+                col
+                );
+
+
+            p->drawEllipse(
+                crossing.pos,
+                3,
+                3
+                );
+
+
+            QColor halo =
+                col;
+
+
+            halo.setAlpha(
+                alpha / 3
+                );
+
+
+            p->setBrush(
+                halo
+                );
+
+
+            p->drawEllipse(
+                crossing.pos,
+                6,
+                6
+                );
         }
     }
 
+
+    // =========================================================
     // HUD
-    p->setPen(QColor(220, 220, 230));
-    p->setFont(QFont("Monospace", 10));
-    int hudTop = 20; // Start from top since we have sidebar instead of toolbar
+    // =========================================================
 
-    // Always show system info
-    p->drawText(10, hudTop,
-               QString("System: %1 | dt=%2 | trail=%3/%4 | substeps=%5 | mode=%6")
-                   .arg(systemName_)
-                   .arg(dt_)
-                   .arg(trail_.size())
-                   .arg(maxTrail_)
-                   .arg(substeps_)
-                   .arg(drawMode_ == DrawMode::Trail ? "Trail" :
-                            drawMode_ == DrawMode::Poincare ? "Poincaré" : "Both"));
+    p->setPen(
+        QColor(
+            220,
+            220,
+            230
+            )
+        );
+
+
+    p->setFont(
+        QFont(
+            "Monospace",
+            10
+            )
+        );
+
+
+    int hudTop = 20;
+
+
+    p->drawText(
+        10,
+        hudTop,
+
+        QString(
+            "System: %1 | dt=%2 | trail=%3/%4 | substeps=%5 | mode=%6"
+            )
+            .arg(systemName_)
+            .arg(dt_)
+            .arg(trail_.size())
+            .arg(maxTrail_)
+            .arg(substeps_)
+            .arg(
+                drawMode_ == DrawMode::Trail
+                    ? "Trail"
+                    :
+                    drawMode_ == DrawMode::Poincare
+                        ? "Poincaré"
+                        :
+                        "Both"
+                )
+        );
+
+
     hudTop += 20;
 
-    // Only show Poincare info if enabled
-    if (poincareEnabled_ && (drawMode_ == DrawMode::Poincare || drawMode_ == DrawMode::Both)) {
-        p->drawText(10, hudTop,
-                   QString("Crossings: %1")
-                       .arg(poincareBothDirections_ ? "Up + Down" : "Up only"));
+
+    // =========================================================
+    // POINCARÉ HUD
+    // =========================================================
+
+    if (
+        poincareEnabled_ &&
+        (
+            drawMode_ == DrawMode::Poincare ||
+            drawMode_ == DrawMode::Both
+            )
+        ) {
+
+
+        p->drawText(
+            10,
+            hudTop,
+
+            QString(
+                "Crossings: %1"
+                )
+                .arg(
+                    poincareBothDirections_
+                        ?
+                        "Up + Down"
+                        :
+                        "Up only"
+                    )
+            );
+
+
         hudTop += 20;
 
-        p->drawText(10, hudTop,
-                   QString("Poincaré plane z = %1").arg(poincarePlane_));
+
+        p->drawText(
+            10,
+            hudTop,
+
+            QString(
+                "Poincaré plane z = %1"
+                )
+                .arg(
+                    poincarePlane_
+                    )
+            );
+
+
         hudTop += 20;
 
-        p->drawText(10, hudTop, "Legend: White = Upward, Blue = Downward");
+
+        p->drawText(
+            10,
+            hudTop,
+
+            "Legend: White = Upward, Blue = Downward"
+            );
+
+
         hudTop += 20;
-    } else if (!poincareEnabled_ && (drawMode_ == DrawMode::Poincare || drawMode_ == DrawMode::Both)) {
-        p->drawText(10, hudTop, "Poincaré section not available for this system");
+
+
+    } else if (
+        !poincareEnabled_ &&
+        (
+            drawMode_ == DrawMode::Poincare ||
+            drawMode_ == DrawMode::Both
+            )
+        ) {
+
+
+        p->drawText(
+            10,
+            hudTop,
+
+            "Poincaré section not available for this system"
+            );
+
+
         hudTop += 20;
     }
 
-    // Educational overlays
+
+    // =========================================================
+    // EDUCATIONAL OVERLAYS
+    // =========================================================
+
     switch (overlayMode_) {
-    case OverlayMode::None:      break;
-    case OverlayMode::PhaseSpace: drawPhaseSpace(p);     break;
-    case OverlayMode::Energy:     if (dims_ == 4) drawEnergyOverlay(p); break;
-    case OverlayMode::Lyapunov:   drawLyapunovOverlay(p); break;
-    case OverlayMode::Info:       drawInfoOverlay(p);     break;
+
+    case OverlayMode::None:
+        break;
+
+    case OverlayMode::PhaseSpace:
+        drawPhaseSpace(p);
+        break;
+
+    case OverlayMode::Energy:
+        if (dims_ == 4)
+            drawEnergyOverlay(p);
+        break;
+
+    case OverlayMode::Lyapunov:
+        drawLyapunovOverlay(p);
+        break;
+
+    case OverlayMode::Info:
+        drawInfoOverlay(p);
+        break;
     }
+
+
+    // =========================================================
+    // FORMULA SVG
+    // =========================================================
 
     QString formulaPath;
+
+
     if (systemName_ == "Lorenz") {
-        formulaPath = ":/images/images/lorenzEquationVector.svg";
+
+        formulaPath =
+            ":/images/images/lorenzEquationVector.svg";
+
     } else if (systemName_ == "Rössler") {
-        formulaPath = ":/images/images/RosslerEquationVector.svg";
+
+        formulaPath =
+            ":/images/images/RosslerEquationVector.svg";
+
     } else if (systemName_ == "Van der Pol") {
-        formulaPath = ":/images/images/VanDerPolEquationVector.svg";
+
+        formulaPath =
+            ":/images/images/VanDerPolEquationVector.svg";
+
     } else if (systemName_ == "Double Pendulum") {
-        formulaPath = ":/images/images/DoublePendulumEquationVector.svg";
+
+        formulaPath =
+            ":/images/images/DoublePendulumEquationVector.svg";
     }
+
 
     if (!formulaPath.isEmpty()) {
-        QSvgRenderer renderer(formulaPath);
 
-        // Get natural size of SVG
-        QSizeF svgSize = renderer.defaultSize();
-        if (svgSize.isEmpty()) svgSize = QSizeF(240, 140); // fallback
+        QSvgRenderer renderer(
+            formulaPath
+            );
 
-        double scaleFactor = 1.0;
+
+        QSizeF svgSize =
+            renderer.defaultSize();
+
+
+        if (svgSize.isEmpty())
+            svgSize =
+                QSizeF(
+                    240,
+                    140
+                    );
+
+
+        double scaleFactor =
+            1.0;
+
+
         QSizeF targetSize;
+
+
         QRectF target;
+
+
         QRectF fullRect;
+
+
         QColor bgColor;
+
+
         QRectF renderRect;
 
-        if (systemName_ == "Double Pendulum") {
-            // Allow a wider box for pendulum formulas
-            double maxWidth = rect.width() * 0.70;
-            if (svgSize.width() > maxWidth) {
-                scaleFactor = maxWidth / svgSize.width();
+
+        if (
+            systemName_ ==
+            "Double Pendulum"
+            ) {
+
+
+            double maxWidth =
+                rect.width() *
+                0.70;
+
+
+            if (
+                svgSize.width() >
+                maxWidth
+                ) {
+
+                scaleFactor =
+                    maxWidth /
+                    svgSize.width();
             }
-            targetSize = QSizeF(svgSize.width() * scaleFactor,
-                                svgSize.height() * scaleFactor);
 
-            target = QRectF(rect.width() - targetSize.width() - 30,
-                            rect.height() - targetSize.height() - 30,
-                            targetSize.width(),
-                            targetSize.height());
 
-            fullRect = target.adjusted(-10,-10,10,10);
-            bgColor = QColor(45,45,50,90);
-            renderRect = QRectF(10, 10, targetSize.width(), targetSize.height());
+            targetSize =
+                QSizeF(
+                    svgSize.width() *
+                        scaleFactor,
+
+                    svgSize.height() *
+                        scaleFactor
+                    );
+
+
+            target =
+                QRectF(
+                    rect.width() -
+                        targetSize.width() -
+                        30,
+
+                    rect.height() -
+                        targetSize.height() -
+                        30,
+
+                    targetSize.width(),
+                    targetSize.height()
+                    );
+
+
+            fullRect =
+                target.adjusted(
+                    -10,
+                    -10,
+                    10,
+                    10
+                    );
+
+
+            bgColor =
+                QColor(
+                    45,
+                    45,
+                    50,
+                    90
+                    );
+
+
+            renderRect =
+                QRectF(
+                    10,
+                    10,
+                    targetSize.width(),
+                    targetSize.height()
+                    );
+
 
         } else {
-            // Default sizing for other systems
-            double maxWidth = rect.width() * 0.15;   // up to 15% of window width
-            if (svgSize.width() > maxWidth) {
-                scaleFactor = maxWidth / svgSize.width();
+
+
+            double maxWidth =
+                rect.width() *
+                0.15;
+
+
+            if (
+                svgSize.width() >
+                maxWidth
+                ) {
+
+                scaleFactor =
+                    maxWidth /
+                    svgSize.width();
             }
-            targetSize = QSizeF(svgSize.width() * scaleFactor,
-                                svgSize.height() * scaleFactor);
 
-            target = QRectF(rect.width() - targetSize.width() - 20,
-                            rect.height() - targetSize.height() - 20,
-                            targetSize.width(),
-                            targetSize.height());
 
-            fullRect = target.adjusted(-8,-8,8,8);
-            bgColor = QColor(45,45,50,200);
-            renderRect = QRectF(8, 8, targetSize.width(), targetSize.height());
+            targetSize =
+                QSizeF(
+                    svgSize.width() *
+                        scaleFactor,
+
+                    svgSize.height() *
+                        scaleFactor
+                    );
+
+
+            target =
+                QRectF(
+                    rect.width() -
+                        targetSize.width() -
+                        20,
+
+                    rect.height() -
+                        targetSize.height() -
+                        20,
+
+                    targetSize.width(),
+                    targetSize.height()
+                    );
+
+
+            fullRect =
+                target.adjusted(
+                    -8,
+                    -8,
+                    8,
+                    8
+                    );
+
+
+            bgColor =
+                QColor(
+                    45,
+                    45,
+                    50,
+                    200
+                    );
+
+
+            renderRect =
+                QRectF(
+                    8,
+                    8,
+                    targetSize.width(),
+                    targetSize.height()
+                    );
         }
+
 
         if (formulaNeedsUpdate_) {
-            formulaPixmap_ = QPixmap(fullRect.size().toSize());
-            formulaPixmap_.fill(Qt::transparent);
-            QPainter pixPainter(&formulaPixmap_);
-            pixPainter.fillRect(formulaPixmap_.rect(), bgColor);
-            pixPainter.setPen(QPen(QColor(200,200,210),1));
-            pixPainter.drawRect(formulaPixmap_.rect().adjusted(1,1,-1,-1));
-            renderer.render(&pixPainter, renderRect);
-            formulaNeedsUpdate_ = false;
+
+            formulaPixmap_ =
+                QPixmap(
+                    fullRect.size().toSize()
+                    );
+
+
+            formulaPixmap_.fill(
+                Qt::transparent
+                );
+
+
+            QPainter pixPainter(
+                &formulaPixmap_
+                );
+
+
+            pixPainter.fillRect(
+                formulaPixmap_.rect(),
+                bgColor
+                );
+
+
+            pixPainter.setPen(
+                QPen(
+                    QColor(
+                        200,
+                        200,
+                        210
+                        ),
+                    1
+                    )
+                );
+
+
+            pixPainter.drawRect(
+                formulaPixmap_.rect()
+                    .adjusted(
+                        1,
+                        1,
+                        -1,
+                        -1
+                        )
+                );
+
+
+            renderer.render(
+                &pixPainter,
+                renderRect
+                );
+
+
+            formulaNeedsUpdate_ =
+                false;
         }
 
-        p->drawPixmap(fullRect.topLeft(), formulaPixmap_);
+
+        p->drawPixmap(
+            fullRect.topLeft(),
+            formulaPixmap_
+            );
     }
+
+
+    // =========================================================
+    // START MESSAGE
+    // =========================================================
+
     if (!simulationStarted_) {
-        p->setFont(QFont("Monospace", 12, QFont::Bold));
-        p->setPen(Qt::yellow);
-        p->drawText(rect, Qt::AlignCenter,
-                   "Press 1–4 to start a system");
-    }
 
-    else if (!simulationActive_) {
-        QRect box(rect.width()/2 - 60, 50, 120, 30);
-        p->setBrush(Qt::red);
-        p->setPen(Qt::NoPen);
-        p->drawRect(box);
+        p->setFont(
+            QFont(
+                "Monospace",
+                12,
+                QFont::Bold
+                )
+            );
 
-        p->setPen(Qt::white);
-        p->setFont(QFont("Monospace", 10));
-        p->drawText(box, Qt::AlignCenter, "PAUSED");
+
+        p->setPen(
+            Qt::yellow
+            );
+
+
+        p->drawText(
+            rect,
+            Qt::AlignCenter,
+            "Press 1–4 to start a system"
+            );
+
+
+    } else if (!simulationActive_) {
+
+
+        QRect box(
+            rect.width() / 2 - 60,
+            50,
+            120,
+            30
+            );
+
+
+        p->setBrush(
+            Qt::red
+            );
+
+
+        p->setPen(
+            Qt::NoPen
+            );
+
+
+        p->drawRect(
+            box
+            );
+
+
+        p->setPen(
+            Qt::white
+            );
+
+
+        p->setFont(
+            QFont(
+                "Monospace",
+                10
+                )
+            );
+
+
+        p->drawText(
+            box,
+            Qt::AlignCenter,
+            "PAUSED"
+            );
     }
 }
 
+void MainWindow::saveSimulationImage(const QString& filename)
+{
+    if (!visualizationWidget_)
+        return;
 
-void MainWindow::saveSimulationImage(const QString& filename) {
-    QPixmap pixmap(size());
-    pixmap.fill(QColor(25, 25, 30));
+    QPixmap pixmap =
+        visualizationWidget_->grab();
 
-    QPainter p(&pixmap);
-    p.setRenderHint(QPainter::Antialiasing, true);
-
-    p.setPen(QPen(QColor(50, 50, 55), 1));
-    for (int x = 0; x < width(); x += 50) p.drawLine(x, 0, x, height());
-    for (int y = 0; y < height(); y += 50) p.drawLine(0, y, width(), y);
-
-    // Trail (always draw trail in saved image)
-    if (trail_.size() > 1) {
-        for (int i = 1; i < trail_.size(); ++i) {
-            double t = double(i) / trail_.size();
-            QColor c;
-            if (colorMode_ == 0) {
-                c = QColor::fromHsvF(t, 1.0, 1.0, fadingEnabled_ ? (0.2 + 0.8*(1.0 - t)) : 1.0);
-            } else {
-                double dx = trail_[i].x() - trail_[i-1].x();
-                double dy = trail_[i].y() - trail_[i-1].y();
-                double speed = std::sqrt(dx*dx + dy*dy);
-                double s = std::min(speed / 10.0, 1.0);
-                c = QColor::fromHsvF(0.3 + 0.7*s, 1.0, 1.0, fadingEnabled_ ? (0.2 + 0.8*(1.0 - t)) : 1.0);
-            }
-            p.setPen(QPen(c, 2));
-            p.drawLine(trail_[i-1], trail_[i]);
-        }
+    if (!pixmap.save(filename)) {
+        QMessageBox::warning(
+            this,
+            "Save Error",
+            "Could not save the simulation image."
+            );
     }
-
-    // Poincare points if mode includes them
-    if (drawMode_ == DrawMode::Poincare || drawMode_ == DrawMode::Both) {
-        p.setPen(QPen(QColor("#ffff00"), 8));
-        for (const auto& pt : poincarePoints_) {
-            p.drawPoint(pt.pos);
-        }
-    }
-
-    pixmap.save(filename);
 }
-
 void MainWindow::setSystem(int id) {
+
     customImageActive_ = false;
+
     customImagePoints_.clear();
+
+    customImageDrawIndex_ = 0;
+
+    customImageDrawingFinished_ = false;
+
+    customImageAnimationTime_ = 0.0;
+
     customImage_ = QImage();
 
     switch (id) {
@@ -1790,34 +2336,59 @@ void MainWindow::keyPressEvent(QKeyEvent* e) {
 // CUSTOM IMAGE DRAWING STARTS HERE
 void MainWindow::loadCustomImage()
 {
-    QString filename = QFileDialog::getOpenFileName(
-        this,
-        "Open Image",
-        QString(),
-        "Images (*.png *.jpg *.jpeg *.bmp *.webp)"
-        );
+    QString filename =
+        QFileDialog::getOpenFileName(
+            this,
+            "Open Image",
+            QString(),
+            "Images (*.png *.jpg *.jpeg *.bmp *.webp)"
+            );
 
     if (filename.isEmpty())
         return;
 
+
+    // ---------------------------------------------------------
+    // Load image
+    // ---------------------------------------------------------
+
     QImage image(filename);
 
     if (image.isNull()) {
+
         QMessageBox::warning(
             this,
             "Invalid Image",
             "Could not load the selected image."
             );
+
         return;
     }
 
-    // Store image
-    customImage_ = image.convertToFormat(QImage::Format_RGB32);
 
-    // Extract edges/shape
+    // ---------------------------------------------------------
+    // Store image
+    // ---------------------------------------------------------
+
+    customImage_ =
+        image.convertToFormat(
+            QImage::Format_RGB32
+            );
+
+
+    // ---------------------------------------------------------
+    // Generate the fixed drawing points
+    // ---------------------------------------------------------
+
     generateCustomImagePoints();
 
-    if (customImagePoints_.empty()) {
+
+    // ---------------------------------------------------------
+    // Make sure enough points were found
+    // ---------------------------------------------------------
+
+    if (customImagePoints_.size() < 2) {
+
         QMessageBox::warning(
             this,
             "No Shape Found",
@@ -1825,393 +2396,501 @@ void MainWindow::loadCustomImage()
             );
 
         customImage_ = QImage();
+
         return;
     }
+
+
     // ---------------------------------------------------------
-    // Initialize particles with a small deterministic displacement.
-    // ---------------------------------------------------------
-    customImageParticlePositions_.clear();
-
-    customImageParticlePositions_.reserve(
-        customImagePoints_.size()
-        );
-
-    for (std::size_t i = 0;
-         i < customImagePoints_.size();
-         ++i) {
-
-        const QPointF& point =
-            customImagePoints_[i];
-
-        const double phase =
-            static_cast<double>(i) * 0.73;
-
-        const double radius =
-            0.008 +
-            0.006 *
-                (0.5 + 0.5 * std::sin(phase));
-
-        QPointF particle(
-            point.x() + std::cos(phase) * radius,
-            point.y() + std::sin(phase) * radius
-            );
-
-        particle.rx() =
-            std::clamp(particle.x(), 0.0, 1.0);
-
-        particle.ry() =
-            std::clamp(particle.y(), 0.0, 1.0);
-
-        customImageParticlePositions_.push_back(
-            particle
-            );
-    }
-
-    customImageParticleVelocities_.assign(
-        customImagePoints_.size(),
-        QPointF(0.0, 0.0)
-        );
-
-    customImageAnimationTime_ = 0.0;
-
     // Activate custom image mode
+    // ---------------------------------------------------------
+
     customImageActive_ = true;
+
     systemName_ = "Custom Image";
 
-    // This isn't really an ODE system anymore
     dims_ = 2;
 
-    simulationStarted_ = true;
-    simulationActive_ = true;
+
+    // ---------------------------------------------------------
+    // Reset animation
+    // ---------------------------------------------------------
+
+    customImageDrawIndex_ = 0;
+
+    customImageDrawingFinished_ = false;
 
     customImageAnimationTime_ = 0.0;
 
-    // Clear old dynamical-system data
+
+    // ---------------------------------------------------------
+    // Clear normal simulation
+    // ---------------------------------------------------------
+
     trail_.clear();
+
     poincarePoints_.clear();
 
 
+    // ---------------------------------------------------------
+    // Start animation
+    // ---------------------------------------------------------
+
+    simulationStarted_ = true;
+
+    simulationActive_ = true;
+
+
     if (pauseButton_) {
+
         pauseButton_->setText(
-            pauseButtonIcon_ + "    Pause"
+            pauseButtonIcon_ +
+            "    Pause"
             );
     }
+
 
     if (visualizationWidget_)
         visualizationWidget_->update();
 }
 
-
 void MainWindow::generateCustomImagePoints()
 {
     customImagePoints_.clear();
+    customImagePointStrengths_.clear();
 
     if (customImage_.isNull())
         return;
 
-    // ---------------------------------------------------------
-    // Resize image for processing
-    // ---------------------------------------------------------
-    QImage image = customImage_.scaled(
-        customImageWidth_,
-        customImageHeight_,
-        Qt::KeepAspectRatio,
-        Qt::SmoothTransformation
-        );
 
-    const int width = image.width();
-    const int height = image.height();
+    // =========================================================
+    // SETTINGS
+    // =========================================================
 
-    if (width < 5 || height < 5)
-        return;
+    // Higher = more points.
+    // Since you have a decent PC, this is intentionally fairly high.
+    const int targetPointCount = 25000;
 
-    // ---------------------------------------------------------
-    // Step 1: Convert image to grayscale
-    // ---------------------------------------------------------
-    std::vector<int> gray(
-        width * height,
-        0
-        );
+    // Minimum/maximum number of points actually generated.
+    const int minPoints = 5000;
+    const int maxPoints = 50000;
 
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
 
-            gray[y * width + x] =
-                qGray(image.pixel(x, y));
-        }
-    }
+    // =========================================================
+    // CREATE GRAYSCALE IMAGE
+    // =========================================================
 
-    // ---------------------------------------------------------
-    // Step 2: Estimate background brightness
-    // ---------------------------------------------------------
-    std::vector<int> borderValues;
-
-    const int borderSize = std::max(
-        1,
-        std::min(width, height) / 20
-        );
-
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-
-            if (x < borderSize ||
-                x >= width - borderSize ||
-                y < borderSize ||
-                y >= height - borderSize) {
-
-                borderValues.push_back(
-                    gray[y * width + x]
-                    );
-            }
-        }
-    }
-
-    if (borderValues.empty())
-        return;
-
-    std::sort(
-        borderValues.begin(),
-        borderValues.end()
-        );
-
-    const int backgroundBrightness =
-        borderValues[borderValues.size() / 2];
-
-    // ---------------------------------------------------------
-    // Step 3: Build foreground mask
-    // ---------------------------------------------------------
-    std::vector<unsigned char> foreground(
-        width * height,
-        0
-        );
-
-    const int foregroundThreshold = 35;
-
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-
-            const int brightness =
-                gray[y * width + x];
-
-            const int difference =
-                std::abs(
-                    brightness -
-                    backgroundBrightness
-                    );
-
-            if (difference > foregroundThreshold) {
-                foreground[y * width + x] = 1;
-            }
-        }
-    }
-
-    // ---------------------------------------------------------
-    // Step 4: Connected-component filtering
-    // ---------------------------------------------------------
-    std::vector<unsigned char> visited(
-        width * height,
-        0
-        );
-
-    const int minimumComponentSize =
-        std::max(
-            20,
-            (width * height) / 5000
+    QImage image =
+        customImage_.convertToFormat(
+            QImage::Format_Grayscale8
             );
 
-    std::vector<unsigned char> relevantMask(
-        width * height,
-        0
-        );
+    const int maxProcessingSize = 1200;
 
-    const int dx[4] = { 1, -1, 0, 0 };
-    const int dy[4] = { 0, 0, 1, -1 };
+    if (image.width() > maxProcessingSize ||
+        image.height() > maxProcessingSize) {
 
-    for (int startY = 0; startY < height; ++startY) {
-        for (int startX = 0; startX < width; ++startX) {
-
-            const int startIndex =
-                startY * width + startX;
-
-            if (!foreground[startIndex] ||
-                visited[startIndex]) {
-                continue;
-            }
-
-            std::vector<int> component;
-
-            std::deque<QPoint> queue;
-
-            queue.push_back(
-                QPoint(startX, startY)
-                );
-
-            visited[startIndex] = 1;
-
-            while (!queue.empty()) {
-
-                const QPoint current =
-                    queue.front();
-
-                queue.pop_front();
-
-                const int cx = current.x();
-                const int cy = current.y();
-
-                const int currentIndex =
-                    cy * width + cx;
-
-                component.push_back(
-                    currentIndex
-                    );
-
-                for (int direction = 0;
-                     direction < 4;
-                     ++direction) {
-
-                    const int nx =
-                        cx + dx[direction];
-
-                    const int ny =
-                        cy + dy[direction];
-
-                    if (nx < 0 ||
-                        nx >= width ||
-                        ny < 0 ||
-                        ny >= height) {
-                        continue;
-                    }
-
-                    const int neighborIndex =
-                        ny * width + nx;
-
-                    if (!foreground[neighborIndex] ||
-                        visited[neighborIndex]) {
-                        continue;
-                    }
-
-                    visited[neighborIndex] = 1;
-
-                    queue.push_back(
-                        QPoint(nx, ny)
-                        );
-                }
-            }
-
-            if (static_cast<int>(component.size()) >=
-                minimumComponentSize) {
-
-                for (const int index : component) {
-                    relevantMask[index] = 1;
-                }
-            }
-        }
+        image = image.scaled(
+            maxProcessingSize,
+            maxProcessingSize,
+            Qt::KeepAspectRatio,
+            Qt::SmoothTransformation
+            );
     }
 
-    // ---------------------------------------------------------
-    // Step 5: Detect edges inside relevant foreground
-    // ---------------------------------------------------------
-    const int edgeThreshold = 60;
 
-    // ---------------------------------------------------------
-    // Step 6: Spatial point-density control
+    if (image.isNull())
+        return;
+
+
+    const int width =
+        image.width();
+
+    const int height =
+        image.height();
+
+
+    if (width < 3 || height < 3)
+        return;
+
+
+    // =========================================================
+    // CALCULATE EDGE STRENGTH
     //
-    // Divide the image into cells. Each cell can contribute
-    // only a limited number of points.
-    // ---------------------------------------------------------
-    const int cellSize = 8;
-    const int maxPointsPerCell = 1;
+    // Sobel-like gradient.
+    //
+    // This is done ONLY ONCE when the image is generated,
+    // NOT every frame during painting.
+    // =========================================================
 
-    const int cellsX =
-        (width + cellSize - 1) / cellSize;
-
-    const int cellsY =
-        (height + cellSize - 1) / cellSize;
-
-    std::vector<int> cellPointCount(
-        cellsX * cellsY,
-        0
+    std::vector<float> edgeStrength(
+        static_cast<std::size_t>(width * height),
+        0.0f
         );
 
-    for (int y = 1; y < height - 1; ++y) {
-        for (int x = 1; x < width - 1; ++x) {
 
-            const int index =
-                y * width + x;
+    float maxEdge =
+        0.0f;
 
-            if (!relevantMask[index])
-                continue;
 
-            const int brightness =
-                gray[index];
+    for (int y = 1;
+         y < height - 1;
+         ++y) {
 
-            const int brightnessRight =
-                gray[y * width + (x + 1)];
+        for (int x = 1;
+             x < width - 1;
+             ++x) {
 
-            const int brightnessDown =
-                gray[(y + 1) * width + x];
 
-            const int edgeX =
-                std::abs(
-                    brightness -
-                    brightnessRight
+            const int p00 =
+                image.constScanLine(y - 1)[x - 1];
+
+            const int p01 =
+                image.constScanLine(y - 1)[x];
+
+            const int p02 =
+                image.constScanLine(y - 1)[x + 1];
+
+
+            const int p10 =
+                image.constScanLine(y)[x - 1];
+
+            const int p12 =
+                image.constScanLine(y)[x + 1];
+
+
+            const int p20 =
+                image.constScanLine(y + 1)[x - 1];
+
+            const int p21 =
+                image.constScanLine(y + 1)[x];
+
+            const int p22 =
+                image.constScanLine(y + 1)[x + 1];
+
+
+            // Sobel X
+            const int gx =
+                -p00
+                - 2 * p10
+                - p20
+                + p02
+                + 2 * p12
+                + p22;
+
+
+            // Sobel Y
+            const int gy =
+                -p00
+                - 2 * p01
+                - p02
+                + p20
+                + 2 * p21
+                + p22;
+
+
+            const float magnitude =
+                std::sqrt(
+                    static_cast<float>(
+                        gx * gx +
+                        gy * gy
+                        )
                     );
 
-            const int edgeY =
-                std::abs(
-                    brightness -
-                    brightnessDown
+
+            const std::size_t index =
+                static_cast<std::size_t>(
+                    y * width + x
                     );
 
-            const int edgeStrength =
-                edgeX + edgeY;
 
-            if (edgeStrength <= edgeThreshold)
-                continue;
+            edgeStrength[index] =
+                magnitude;
 
-            // Determine which spatial cell this point belongs to.
-            const int cellX =
-                x / cellSize;
 
-            const int cellY =
-                y / cellSize;
+            if (magnitude > maxEdge)
+                maxEdge = magnitude;
+        }
+    }
 
-            const int cellIndex =
-                cellY * cellsX + cellX;
 
-            // Skip the point if this cell already contains
-            // enough particles.
-            if (cellPointCount[cellIndex] >=
-                maxPointsPerCell) {
+    if (maxEdge <= 0.0f)
+        return;
+
+
+    // =========================================================
+    // NORMALIZE EDGE STRENGTH
+    //
+    // Slight gamma adjustment makes strong facial/detail
+    // edges stand out more.
+    // =========================================================
+
+    for (float& value : edgeStrength) {
+
+        value =
+            std::clamp(
+                value / maxEdge,
+                0.0f,
+                1.0f
+                );
+
+
+        // Increase separation between weak and strong edges.
+        value = std::pow(
+            value,
+            0.35f
+            );
+    }
+
+
+    // =========================================================
+    // DETERMINE SAMPLING STEP
+    // =========================================================
+
+    const double totalPixels =
+        static_cast<double>(
+            width * height
+            );
+
+
+    double density =
+        static_cast<double>(
+            targetPointCount
+            ) /
+        totalPixels;
+
+
+    density =
+        std::clamp(
+            density,
+            0.01,
+            0.75
+            );
+
+
+    // =========================================================
+    // BUILD CANDIDATE POINTS
+    //
+    // More likely to select strong edges.
+    // Weak/background areas are still represented,
+    // but much less frequently.
+    // =========================================================
+
+    struct Candidate
+    {
+        QPointF point;
+        float strength;
+    };
+
+
+    std::vector<Candidate> candidates;
+
+    candidates.reserve(
+        static_cast<std::size_t>(
+            targetPointCount * 1.2
+            )
+        );
+
+
+    // Deterministic pseudo-random generator.
+    std::mt19937 rng(12345);
+
+    std::uniform_real_distribution<float> random01(
+        0.0f,
+        1.0f
+        );
+
+
+    for (int y = 1;
+         y < height - 1;
+         ++y) {
+
+        for (int x = 1;
+             x < width - 1;
+             ++x) {
+
+
+            const std::size_t index =
+                static_cast<std::size_t>(
+                    y * width + x
+                    );
+
+
+            const float strength =
+                edgeStrength[index];
+
+
+            // -------------------------------------------------
+            // Probability weighting
+            //
+            // Strong edges are significantly more likely
+            // to become points.
+            // -------------------------------------------------
+
+            const float probability =
+                static_cast<float>(
+                    density *
+                    5.0f *
+                    strength *
+                    strength
+                    );
+
+
+            if (random01(rng) >
+                std::min(
+                    probability,
+                    1.0f
+                    )) {
+
                 continue;
             }
 
-            ++cellPointCount[cellIndex];
 
-            // Normalize coordinates to [0,1].
-            const double nx =
-                static_cast<double>(x) /
-                static_cast<double>(width - 1);
+            candidates.push_back(
+                {
+                    QPointF(
+                        static_cast<double>(x) /
+                            static_cast<double>(width - 1),
 
-            const double ny =
-                static_cast<double>(y) /
-                static_cast<double>(height - 1);
+                        static_cast<double>(y) /
+                            static_cast<double>(height - 1)
+                        ),
 
-            customImagePoints_.push_back(
-                QPointF(nx, ny)
+                    strength
+                }
                 );
         }
     }
-    // ---------------------------------------------------------
-    // Initialize particle state from detected image points. //Commented because resetState() is handling the creation of initial particle state
-    // ---------------------------------------------------------
-    // customImageParticlePositions_ =
-    //     customImagePoints_;
 
-    // customImageParticleVelocities_.assign(
-    //     customImagePoints_.size(),
-    //     QPointF(0.0, 0.0)
-    //     );
+
+    // =========================================================
+    // FALLBACK
+    //
+    // Make sure we don't end up with too few points on
+    // very simple images.
+    // =========================================================
+
+    if (static_cast<int>(candidates.size()) <
+        minPoints) {
+
+
+        candidates.clear();
+
+
+        const double fallbackStep =
+            std::sqrt(
+                totalPixels /
+                static_cast<double>(
+                    minPoints
+                    )
+                );
+
+
+        const int step =
+            std::max(
+                1,
+                static_cast<int>(
+                    fallbackStep
+                    )
+                );
+
+
+        for (int y = 1;
+             y < height - 1;
+             y += step) {
+
+            for (int x = 1;
+                 x < width - 1;
+                 x += step) {
+
+
+                const std::size_t index =
+                    static_cast<std::size_t>(
+                        y * width + x
+                        );
+
+
+                const float strength =
+                    edgeStrength[index];
+
+
+                candidates.push_back(
+                    {
+                        QPointF(
+                            static_cast<double>(x) /
+                                static_cast<double>(width - 1),
+
+                            static_cast<double>(y) /
+                                static_cast<double>(height - 1)
+                            ),
+
+                        strength
+                    }
+                    );
+            }
+        }
+    }
+
+
+    // =========================================================
+    // LIMIT TOTAL POINT COUNT
+    // =========================================================
+
+    if (static_cast<int>(candidates.size()) >
+        maxPoints) {
+
+
+        std::shuffle(
+            candidates.begin(),
+            candidates.end(),
+            rng
+            );
+
+
+        candidates.resize(
+            maxPoints
+            );
+    }
+
+
+    // =========================================================
+    // SORT BY EDGE STRENGTH
+    //
+    // Stronger points are placed together.
+    // This also makes the rendering cache-friendly.
+    // =========================================================
+
+    // =========================================================
+    // STORE FINAL DATA
+    // =========================================================
+
+    customImagePoints_.reserve(
+        candidates.size()
+        );
+
+    customImagePointStrengths_.reserve(
+        candidates.size()
+        );
+
+
+    for (const Candidate& candidate :
+         candidates) {
+
+        customImagePoints_.push_back(
+            candidate.point
+            );
+
+        customImagePointStrengths_.push_back(
+            candidate.strength
+            );
+    }
+
+
+    // =========================================================
+    // RESET DRAW INDEX
+    // =========================================================
+
+    customImageDrawIndex_ = 0;
 }
 void MainWindow::updateVisualizationCenter(const QSize& size)
 {
