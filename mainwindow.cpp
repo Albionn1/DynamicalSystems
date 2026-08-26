@@ -3051,11 +3051,11 @@ void MainWindow::generateCustomImagePoints()
     // small area and greatly reduces the number of points.
     // =========================================================
 
-    struct Candidate
-    {
-        QPointF point;
-        float strength;
-    };
+    // struct Candidate //declared in mainwindow.h
+    // {
+    //     QPointF point;
+    //     float strength;
+    // };
 
 
     // Number of cells in each direction.
@@ -3372,6 +3372,20 @@ void MainWindow::generateCustomImagePoints()
         );
 
 
+
+    // ============================================================
+    // APPLY POINT DENSITY / DISTRIBUTION
+    // ============================================================
+
+    applyPointDensityFilter(
+        candidates
+        );
+
+
+    // ============================================================
+    // COPY FILTERED CANDIDATES
+    // ============================================================
+
     for (const Candidate& candidate :
          candidates) {
 
@@ -3391,6 +3405,135 @@ void MainWindow::generateCustomImagePoints()
 
     customImageDrawIndex_ = 0;
 }
+
+void MainWindow::applyPointDensityFilter(
+    std::vector<Candidate>& candidates)
+{
+    if (candidates.empty())
+        return;
+
+
+    // ========================================================
+    // POINT DENSITY SETTINGS
+    // ========================================================
+
+    constexpr double maxSpacing = 0.0055;    //Default = 0.010
+    constexpr double minSpacing = 0.0018;   //Default = 0.0035
+
+
+    // ========================================================
+    // STRONGEST FEATURES FIRST
+    // ========================================================
+
+    std::sort(
+        candidates.begin(),
+        candidates.end(),
+
+        [](const Candidate& a,
+           const Candidate& b)
+        {
+            return a.strength >
+                   b.strength;
+        }
+        );
+
+
+    // ========================================================
+    // FILTERED RESULT
+    // ========================================================
+
+    std::vector<Candidate> filtered;
+
+    filtered.reserve(
+        candidates.size()
+        );
+
+
+    // ========================================================
+    // SPATIAL FILTER
+    // ========================================================
+
+    for (const Candidate& candidate :
+         candidates) {
+
+        const double strength =
+            std::clamp(
+                static_cast<double>(
+                    candidate.strength
+                    ),
+                0.0,
+                1.0
+                );
+
+
+        // Stronger features can have points closer together.
+        const double densityStrength =
+            std::pow(
+                strength,
+                0.65
+                );
+
+
+        const double spacing =
+            maxSpacing -
+            densityStrength *
+                (maxSpacing -
+                 minSpacing);
+
+
+        const double spacingSquared =
+            spacing * spacing;
+
+
+        bool tooClose = false;
+
+
+        for (const Candidate& accepted :
+             filtered) {
+
+            const double dx =
+                candidate.point.x() -
+                accepted.point.x();
+
+
+            const double dy =
+                candidate.point.y() -
+                accepted.point.y();
+
+
+            const double distanceSquared =
+                dx * dx +
+                dy * dy;
+
+
+            if (distanceSquared <
+                spacingSquared) {
+
+                tooClose = true;
+                break;
+            }
+        }
+
+
+        if (tooClose)
+            continue;
+
+
+        filtered.push_back(
+            candidate
+            );
+    }
+
+
+    // ========================================================
+    // REPLACE CANDIDATES
+    // ========================================================
+
+    candidates.swap(
+        filtered
+        );
+}
+
 void MainWindow::updateVisualizationCenter(const QSize& size)
 {
     center_ = QPointF(

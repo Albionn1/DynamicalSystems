@@ -33,6 +33,12 @@ class HelpDialog;
 // Forward declaration of visualization widget
 class VisualizationWidget;
 
+struct Candidate
+{
+    QPointF point;
+    float strength;
+};
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -43,6 +49,7 @@ public:
     void updateVisualizationCenter(const QSize& size);
     void loadCustomImage();
     void generateCustomImagePoints();
+    void applyPointDensityFilter(std::vector<Candidate>& candidates);
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
