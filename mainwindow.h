@@ -1,3 +1,4 @@
+// mainwindow.h
 #pragma once
 
 #include "systems.h"
@@ -6,22 +7,79 @@
 #include <QTimer>
 #include <QVector>
 #include <QPointF>
-#include <QPushButton>
+#include <QPainter>
 #include <QToolBar>
 #include <QAction>
-#include <deque>
-#include <QPixmap>
 #include <QResizeEvent>
+#include <QLabel>
+#include <QPixmap>
+#include <QElapsedTimer>
+#include <QSvgRenderer>
+#include <QPushButton>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QFrame>
+#include <QScrollArea>
+#include <QTimer>
+#include <QWidget>
 
-class MainWindow : public QMainWindow {
+#include <vector>
+#include <deque>
+#include <functional>
+
+    class InitialConditionsDialog;
+class HelpDialog;
+
+// Forward declaration of visualization widget
+class VisualizationWidget;
+
+class MainWindow : public QMainWindow
+{
     Q_OBJECT
+
 public:
     explicit MainWindow(QWidget* parent = nullptr);
+    void paintVisualization(QPainter* p, const QRect& rect);
+    void updateVisualizationCenter(const QSize& size);
+    void loadCustomImage();
+    void generateCustomImagePoints();
 
 protected:
-    void paintEvent(QPaintEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
+
+private:
+    QImage customImage_;
+    std::vector<QPointF> customImagePoints_;
+
+    // Current animated particle positions.
+    std::vector<QPointF> customImageParticlePositions_;
+
+    // Current particle velocities.
+    std::vector<QPointF> customImageParticleVelocities_;
+
+    bool customImageActive_ = false;
+
+    int customImageWidth_ = 400;
+    int customImageHeight_ = 400;
+
+    double customImageStrength_ = 2.0;
+
+    double customImageAnimationTime_ = 0.0;
+
+
+private:
+
+    /*=========================================================
+      ENUMS
+    =========================================================*/
+
+    enum class DrawMode
+    {
+        Trail,
+        Poincare,
+        Both
+    };
 
     enum class OverlayMode
     {
@@ -31,92 +89,256 @@ protected:
         Lyapunov,
         Info
     };
-private:
-    struct Crossing {
+
+    struct Crossing
+    {
         QPointF pos;
         bool upward;
         int age;
 
-        Crossing(const QPointF& p, bool u) : pos(p), upward(u), age(0) {}
+        Crossing(const QPointF& p, bool u)
+            : pos(p), upward(u), age(0)
+        {
+        }
     };
 
-    OverlayMode overlayMode_ = OverlayMode::None;
+    /*=========================================================
+      UI CREATION
+    =========================================================*/
 
-    std::deque<double> energyHistory_;
-    const int energyHistoryMax_ = 1000;
+    void createSidebar();
+    void createSidebarButton(const QString& text, const QString& icon, QAction* action, QLayout* layout);
+    void createVisualizationWidget();
 
-    Vec state2_;
-    std::deque<double> lyapunovDist_;
-    const int lyapunovHistoryMax_ = 1000;
-    bool lyapunovInitialized_ = false;
+    /*=========================================================
+      SIMULATION
+    =========================================================*/
 
-    double m1_ = 1.0, m2_ = 1.0;
-    double L1_ = 1.0, L2_ = 1.0;
-    double g_ = 9.81;
+    void step();
+    void resetState();
+    void setSystem(int id);
+    void setInitialConditions();
 
-    void drawPhaseSpace(QPainter& p);
-    void drawEnergyOverlay(QPainter& p);
-    void drawLyapunovOverlay(QPainter& p);
-    void drawInfoOverlay(QPainter& p);
+    QPointF project(const Vec& x);
+
+    void saveSimulationImage(const QString& filename);
+
+    /*=========================================================
+      OVERLAYS
+    =========================================================*/
+
+    void drawPhaseSpace(QPainter* p);
+    void drawEnergyOverlay(QPainter* p);
+    void drawLyapunovOverlay(QPainter* p);
+    void drawInfoOverlay(QPainter* p);
 
     void updateEnergy();
     void initLyapunov();
     void updateLyapunov();
 
-    std::deque<Crossing> poincarePoints_;
+    /*=========================================================
+      DASHBOARD GRAPHS
+    =========================================================*/
 
+    void drawMiniEnergyGraph(QPainter& p,
+                             const QRectF& rect);
 
-    // Simulation
+    void drawMiniLyapunovGraph(QPainter& p,
+                               const QRectF& rect);
+
+    void drawEquationPanel(QPainter& p,
+                           const QRectF& rect);
+
+    /*=========================================================
+      SIMULATION CORE
+    =========================================================*/
+
     QTimer timer_;
+
     ODE system_;
+
     Vec state_;
-    double dt_ = 0.01;
+    Vec state2_;
+
     int dims_ = 3;
+
+    double dt_ = 0.01;
+
     int substeps_ = 10;
-    bool paused_ = false;
+
     bool simulationActive_ = false;
     bool simulationStarted_ = false;
 
-    // Trail
-    QVector<QPointF> trail_;
-    int maxTrail_ = 5000; // adjustable by user
+    /*=========================================================
+      TRAIL
+    =========================================================*/
 
-    // Poincare section
-    bool poincareBothDirections_ = false; // false = upward only, true = both
-    double poincarePlane_ = 0.0; // z value of the Poincare plane (autoestimated)
-    QAction* bothDirectionsAction_ = nullptr;
-    bool poincareEnabled_ = false;
+    std::deque<QPointF> trail_;
 
-    // Drawing modes
-    enum class DrawMode { Trail, Poincare, Both };
+    int maxTrail_ = 5000;
+
     DrawMode drawMode_ = DrawMode::Trail;
 
-    // View transform
-    double scale_ = 8.0; // pixels per unit
+    /*=========================================================
+      POINCARE
+    =========================================================*/
+
+    std::deque<Crossing> poincarePoints_;
+
+    bool poincareEnabled_ = false;
+
+    bool poincareBothDirections_ = false;
+
+    double poincarePlane_ = 25.0;
+
+    /*=========================================================
+      ENERGY
+    =========================================================*/
+
+    std::deque<double> energyHistory_;
+
+    const int energyHistoryMax_ = 1000;
+
+    /*=========================================================
+      LYAPUNOV
+    =========================================================*/
+
+    std::deque<double> lyapunovDist_;
+
+    const int lyapunovHistoryMax_ = 1000;
+
+    bool lyapunovInitialized_ = false;
+
+    double largestLyapunovEstimate_ = 0.0;
+
+    /*=========================================================
+      DOUBLE PENDULUM PARAMETERS
+    =========================================================*/
+
+    double m1_ = 1.0;
+    double m2_ = 1.0;
+
+    double L1_ = 1.0;
+    double L2_ = 1.0;
+
+    double g_ = 9.81;
+
+    /*=========================================================
+      VISUAL SETTINGS
+    =========================================================*/
+
     QPointF center_;
 
-    // Display
-    QString systemName_;
-    int colorMode_ = 0;              // 0=time, 1=speed
+    double scale_ = 8.0;
+
+    QString systemName_ = "Lorenz";
+
+    int colorMode_ = 0;
+
     bool fadingEnabled_ = true;
+
     bool gridEnabled_ = true;
 
-    // Formula SVG cache
+    OverlayMode overlayMode_ = OverlayMode::None;
+
+    /*=========================================================
+      FORMULA CACHE
+    =========================================================*/
+
     QPixmap formulaPixmap_;
+
     bool formulaNeedsUpdate_ = true;
 
-    // Toolbar
-    QToolBar* toolbar_ = nullptr;
+    /*=========================================================
+      PERFORMANCE
+    =========================================================*/
+
+    QElapsedTimer fpsTimer_;
+
+    int frameCounter_ = 0;
+
+    double currentFPS_ = 0.0;
+
+    long long totalSteps_ = 0;
+
+    double simulationTime_ = 0.0;
+
+    /*=========================================================
+      SIDEBAR
+    =========================================================*/
+
+    QFrame* sidebar_ = nullptr;
+    QVBoxLayout* sidebarLayout_ = nullptr;
+    QLabel* companyLabel_ = nullptr;
+    QLabel* titleLabel_ = nullptr;
+    QPushButton* pauseButton_ = nullptr;
+    QString pauseButtonIcon_;
+
+
+    /*=========================================================
+      VISUALIZATION WIDGET
+    =========================================================*/
+
+    class VisualizationWidget* visualizationWidget_ = nullptr;
+
+    /*=========================================================
+      ACTIONS
+    =========================================================*/
+
     QAction* saveAction_ = nullptr;
     QAction* pauseAction_ = nullptr;
     QAction* resetAction_ = nullptr;
     QAction* helpAction_ = nullptr;
+    QAction* bothDirectionsAction_ = nullptr;
 
-    // Helpers
-    void step();
-    QPointF project(const Vec& x);
-    void setSystem(int id);
-    void resetState();
-    void saveSimulationImage(const QString& filename);
-    void setInitialConditions();
+    /*=========================================================
+      LEFT SIDEBAR (Currently not used)
+    =========================================================*/
+
+    // QDockWidget* leftDock_ = nullptr;
+    // QPushButton* lorenzButton_ = nullptr;
+    // QPushButton* rosslerButton_ = nullptr;
+    // QPushButton* vdpButton_ = nullptr;
+    // QPushButton* pendulumButton_ = nullptr;
+    // QDoubleSpinBox* ic1Spin_ = nullptr;
+    // QDoubleSpinBox* ic2Spin_ = nullptr;
+    // QDoubleSpinBox* ic3Spin_ = nullptr;
+    // QDoubleSpinBox* ic4Spin_ = nullptr;
+    // QPushButton* resetICButton_ = nullptr;
+    // QCheckBox* keyboardHelpCheck_ = nullptr;
+
+    /*=========================================================
+      RIGHT SIDEBAR (Currently not used)
+    =========================================================*/
+
+    // QDockWidget* rightDock_ = nullptr;
+    // QComboBox* colorModeCombo_ = nullptr;
+    // QSpinBox* trailLengthSpin_ = nullptr;
+    // QCheckBox* gridCheck_ = nullptr;
+    // QCheckBox* poincareCheck_ = nullptr;
+    // QDoubleSpinBox* sectionPlaneSpin_ = nullptr;
+    // QPushButton* overlayNoneButton_ = nullptr;
+    // QPushButton* overlayPhaseButton_ = nullptr;
+    // QPushButton* overlayEnergyButton_ = nullptr;
+    // QPushButton* overlayLyapunovButton_ = nullptr;
+    // QPushButton* overlayInfoButton_ = nullptr;
+
+    /*=========================================================
+      BOTTOM DASHBOARD (Currently not used)
+    =========================================================*/
+
+    // QWidget* bottomDashboard_ = nullptr;
+    // QLabel* energyValueLabel_ = nullptr;
+    // QLabel* lyapunovValueLabel_ = nullptr;
+    // QLabel* equationTitleLabel_ = nullptr;
+
+    /*=========================================================
+      STATUS BAR (Currently not used)
+    =========================================================*/
+
+    // QLabel* statusSystemLabel_ = nullptr;
+    // QLabel* statusMethodLabel_ = nullptr;
+    // QLabel* statusDtLabel_ = nullptr;
+    // QLabel* statusTimeLabel_ = nullptr;
+    // QLabel* statusRunningLabel_ = nullptr;
 };

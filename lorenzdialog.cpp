@@ -7,31 +7,38 @@
 LorenzDialog::LorenzDialog(QWidget* parent) : QDialog(parent) {
     setWindowTitle("Lorenz Attractor");
     resize(1200, 740);
-    setStyleSheet("QDialog { background-color: #1e1e24; }");
+    setStyleSheet(
+        "QDialog { background-color: #2d2d30; }"
+        "QLabel { color: #e0e0e0; }"
+        "QPushButton { background-color: #3a3a3d; color: #ffffff; border: 1px solid #4a4a4d; "
+        "padding: 8px 16px; border-radius: 4px; font-weight: 500; }"
+        "QPushButton:hover { background-color: #4a4a4d; border-color: #5a5a5d; }"
+        "QPushButton:pressed { background-color: #2a2a2d; }"
+        );
 
     auto* layout = new QVBoxLayout(this);
-    layout->setSpacing(8);   // tighter spacing control
-    layout->setContentsMargins(16, 16, 16, 16);
+    layout->setSpacing(12);
+    layout->setContentsMargins(24, 24, 24, 24);
 
     // Title
     auto* title = new QLabel("<h2 style='color:#00bcd4; margin:0;'>Lorenz Attractor</h2>", this);
     title->setTextFormat(Qt::RichText);
-    title->setStyleSheet("QLabel { color:#00bcd4; font-size:22px; font-weight:bold; }");
+    title->setStyleSheet("QLabel { color:#00bcd4; font-size:24px; font-weight:bold; margin-bottom:8px; }");
     layout->addWidget(title);
 
     // Description
     auto* desc = new QLabel("The Lorenz system models atmospheric convection and is famous for its butterfly-shaped chaotic trajectory.", this);
     desc->setWordWrap(true);
-    desc->setStyleSheet("QLabel { color:#f5f5f5; font-size:16px; }");
+    desc->setStyleSheet("QLabel { color:#b0b0b0; font-size:15px; line-height:1.5; }");
     layout->addWidget(desc);
 
     auto* svg = new QSvgWidget(":/images/images/lorenzEquationVector.svg", this);
-    svg->setFixedSize(250, 200);
+    svg->setFixedSize(280, 220);
     layout->addWidget(svg, 0, Qt::AlignCenter);
 
     // Variables
     auto* eqTitle = new QLabel("Variables", this);
-    eqTitle->setStyleSheet("QLabel { color:#cfd8dc; font-size:18px; font-weight:bold; margin-top:12px; }");
+    eqTitle->setStyleSheet("QLabel { color:#d0d0d0; font-size:18px; font-weight:bold; margin-top:16px; margin-bottom:8px; }");
     layout->addWidget(eqTitle);
 
     auto* variables = new QLabel(
@@ -45,19 +52,19 @@ LorenzDialog::LorenzDialog(QWidget* parent) : QDialog(parent) {
         );
     variables->setTextFormat(Qt::RichText);
     variables->setStyleSheet(
-        "QLabel { background:#2c2c34; color:#f5f5f5; "
-        "font-family:monospace; font-size:15px; padding:12px; border-radius:6px; }"
+        "QLabel { background:#3a3a3d; color:#e0e0e0; "
+        "font-family:monospace; font-size:14px; padding:16px; border-radius:8px; border: 1px solid #4a4a4d; }"
         );
     variables->setWordWrap(true);
     layout->addWidget(variables);
 
     auto* params = new QLabel("Typical parameters: σ = 10, ρ = 28, β = 8/3.", this);
-    params->setStyleSheet("QLabel { color:#f5f5f5; font-size:15px; margin-top:8px; }");
+    params->setStyleSheet("QLabel { color:#b0b0b0; font-size:14px; margin-top:8px; font-style:italic; }");
     layout->addWidget(params);
 
     // Notes
     auto* notesTitle = new QLabel("Notes", this);
-    notesTitle->setStyleSheet("QLabel { color:#cfd8dc; font-size:18px; font-weight:bold; margin-top:12px; }");
+    notesTitle->setStyleSheet("QLabel { color:#d0d0d0; font-size:18px; font-weight:bold; margin-top:16px; margin-bottom:8px; }");
     layout->addWidget(notesTitle);
 
     auto* notes = new QLabel(
@@ -68,12 +75,13 @@ LorenzDialog::LorenzDialog(QWidget* parent) : QDialog(parent) {
         );
     notes->setTextFormat(Qt::RichText);
     notes->setWordWrap(true);
-    notes->setStyleSheet("QLabel { color:#f5f5f5; font-size:15px; }");
+    notes->setStyleSheet("QLabel { color:#b0b0b0; font-size:14px; line-height:1.6; }");
     layout->addWidget(notes);
+
+    layout->addStretch();
 
     // Close button
     auto* closeBtn = new QPushButton("Close", this);
-    closeBtn->setStyleSheet("QPushButton { background:#2c2c34; color:white; padding:8px 16px; border-radius:4px; }");
     connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
     layout->addWidget(closeBtn, 0, Qt::AlignRight);
 }

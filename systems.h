@@ -53,27 +53,58 @@ inline ODE van_der_pol(double mu = 1.0) {
 }
 
 // Double pendulum (4D: theta1, omega1, theta2, omega2)
-inline ODE double_pendulum(double m1 = 1.0, double m2 = 1.0, double L1 = 1.0, double L2 = 1.0, double g = 9.81) {
+inline ODE double_pendulum(
+    double m1 = 1.0,
+    double m2 = 1.0,
+    double L1 = 1.0,
+    double L2 = 1.0,
+    double g = 9.81)
+{
     return [=](const Vec& x, Vec& dx) {
+
         dx.resize(4);
-        double th1 = x[0], w1 = x[1], th2 = x[2], w2 = x[3];
-        double dth = th1 - th2;
-        double denom = (m1 + m2) * L1 - m2 * L1 * std::cos(dth) * std::cos(dth);
 
-        double num1 = m2 * L1 * w1 * w1 * std::sin(dth) * std::cos(dth)
-                      + m2 * g * std::sin(th2) * std::cos(dth)
-                      + m2 * L2 * w2 * w2 * std::sin(dth)
-                      - (m1 + m2) * g * std::sin(th1);
+        double theta1 = x[0];
+        double omega1 = x[1];
+        double theta2 = x[2];
+        double omega2 = x[3];
 
-        double num2 = -m2 * L2 * w2 * w2 * std::sin(dth) * std::cos(dth)
-                      + (m1 + m2) * (g * std::sin(th1) * std::cos(dth) - L1 * w1 * w1 * std::sin(dth))
-                      - (m1 + m2) * g * std::sin(th2);
+        double delta = theta1 - theta2;
 
-        double denom2 = (L2 / L1) * denom;
+        double sinDelta = std::sin(delta);
+        double cosDelta = std::cos(delta);
 
-        dx[0] = w1;
-        dx[1] = num1 / denom;
-        dx[2] = w2;
-        dx[3] = num2 / denom2;
+        dx[0] = omega1;
+        dx[2] = omega2;
+
+        double den1 =
+            L1 * (2.0 * m1 + m2
+                  - m2 * std::cos(2.0 * delta));
+
+        double den2 =
+            L2 * (2.0 * m1 + m2
+                  - m2 * std::cos(2.0 * delta));
+
+        dx[1] =
+            (
+                -g * (2.0 * m1 + m2) * std::sin(theta1)
+                -m2 * g * std::sin(theta1 - 2.0 * theta2)
+                -2.0 * m2 * sinDelta *
+                      (
+                          omega2 * omega2 * L2
+                          + omega1 * omega1 * L1 * cosDelta
+                          )
+                ) / den1;
+
+        dx[3] =
+            (
+                2.0 * sinDelta *
+                (
+                    omega1 * omega1 * L1 * (m1 + m2)
+                    + g * (m1 + m2) * std::cos(theta1)
+                    + omega2 * omega2 * L2 * m2 * cosDelta
+                    )
+                ) / den2;
     };
 }
+

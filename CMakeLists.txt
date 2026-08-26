@@ -1,62 +1,90 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.21)
 
-project(DynamicalSystems VERSION 0.1 LANGUAGES CXX)
-
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTORCC ON)
-set(CMAKE_AUTOUIC OFF)
+project(DynamicalSystemsVisualizer VERSION 2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Require Qt6 Widgets and SvgWidgets
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets SvgWidgets)
+# Enable automatic Qt features
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTOUIC ON)
 
-set(PROJECT_SOURCES
+find_package(Qt6 REQUIRED COMPONENTS
+    Core
+    Gui
+    Widgets
+    Svg
+    SvgWidgets
+)
+qt_standard_project_setup()
+
+qt_add_executable(DynamicalSystemsVisualizer
     main.cpp
-    mainwindow.cpp
+
     mainwindow.h
+    mainwindow.cpp
+
+    # Original headers
     systems.h
-    welcomewindow.cpp
-    welcomewindow.h
-    detailsdialog.h
-    lorenzdialog.cpp
+
+    # Dialogs from your repo
+    helpdialog.h
+    helpdialog.cpp
+
+    initialconditionsdialog.h
+    initialconditionsdialog.cpp
+
     lorenzdialog.h
-    rosslerdialog.cpp
+    lorenzdialog.cpp
+
     rosslerdialog.h
-    vanderpoldialog.cpp
+    rosslerdialog.cpp
+
     vanderpoldialog.h
-    doublependulumdialog.cpp
+    vanderpoldialog.cpp
+
     doublependulumdialog.h
+    doublependulumdialog.cpp
+
+    welcomewindow.h
+    welcomewindow.cpp
+
+    # Resource file from your repo
     images.qrc
 )
 
-qt_add_executable(DynamicalSystems
-    MANUAL_FINALIZATION
-    ${PROJECT_SOURCES}
-    helpdialog.h helpdialog.cpp
-    initialconditionsdialog.h initialconditionsdialog.cpp
-
+target_link_libraries(DynamicalSystemsVisualizer PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Widgets
+    Qt6::Svg
+    Qt6::SvgWidgets
 )
 
-target_link_libraries(DynamicalSystems
-    PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::SvgWidgets
-)
+if(MSVC)
+    target_compile_options(DynamicalSystemsVisualizer PRIVATE
+        /W4
+        /permissive-
+    )
+else()
+    target_compile_options(DynamicalSystemsVisualizer PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+endif()
 
-# macOS/iOS bundle settings
-set_target_properties(DynamicalSystems PROPERTIES
-    MACOSX_BUNDLE_GUI_IDENTIFIER com.example.DynamicalSystems
-    MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
-    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
-    MACOSX_BUNDLE TRUE
-    WIN32_EXECUTABLE TRUE
-)
+# macOS bundle config
+if(APPLE)
+    set_target_properties(DynamicalSystemsVisualizer PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_BUNDLE_NAME "Dynamical Systems Visualizer"
+    )
+endif()
 
-include(GNUInstallDirs)
-install(TARGETS DynamicalSystems
+install(TARGETS DynamicalSystemsVisualizer
     BUNDLE DESTINATION .
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    RUNTIME DESTINATION bin
 )
-
-qt_finalize_executable(DynamicalSystems)
