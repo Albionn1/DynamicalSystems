@@ -2467,13 +2467,17 @@ void MainWindow::generateCustomImagePoints()
     // SETTINGS
     // =========================================================
 
-    // Higher = more points.
-    // Since you have a decent PC, this is intentionally fairly high.
-    const int targetPointCount = 25000;
+    // =========================================================
+    // SETTINGS
+    // =========================================================
 
-    // Minimum/maximum number of points actually generated.
+    const int cellSize = 6;
+
+    // Maximum number of points.
+    const int maxPoints = 15000;
+
+    // Minimum number of points.
     const int minPoints = 5000;
-    const int maxPoints = 50000;
 
 
     // =========================================================
@@ -2638,7 +2642,7 @@ void MainWindow::generateCustomImagePoints()
         // Increase separation between weak and strong edges.
         value = std::pow(
             value,
-            0.35f
+            0.65f
             );
     }
 
@@ -2647,25 +2651,25 @@ void MainWindow::generateCustomImagePoints()
     // DETERMINE SAMPLING STEP
     // =========================================================
 
-    const double totalPixels =
-        static_cast<double>(
-            width * height
-            );
+    // const double totalPixels =
+    //     static_cast<double>(
+    //         width * height
+    //         );
 
 
-    double density =
-        static_cast<double>(
-            targetPointCount
-            ) /
-        totalPixels;
+    // double density =
+    //     static_cast<double>(
+    //         targetPointCount
+    //         ) /
+    //     totalPixels;
 
 
-    density =
-        std::clamp(
-            density,
-            0.01,
-            0.75
-            );
+    // density =
+    //     std::clamp(
+    //         density,
+    //         0.01,
+    //         0.75
+    //         );
 
 
     // =========================================================
@@ -2676,6 +2680,14 @@ void MainWindow::generateCustomImagePoints()
     // but much less frequently.
     // =========================================================
 
+    // =========================================================
+    // BUILD CANDIDATE POINTS USING SPATIAL CELLS
+    //
+    // Each cell keeps only its strongest edge point.
+    // This prevents large clusters of points in the same
+    // small area and greatly reduces the number of points.
+    // =========================================================
+
     struct Candidate
     {
         QPointF point;
@@ -2683,23 +2695,37 @@ void MainWindow::generateCustomImagePoints()
     };
 
 
+    // Number of cells in each direction.
+    const int cellsX =
+        (width + cellSize - 1) / cellSize;
+
+    const int cellsY =
+        (height + cellSize - 1) / cellSize;
+
+
+    // Store the strongest candidate for every cell.
+    //
+    // -1 means that the cell has no candidate yet.
+    std::vector<int> bestCandidate(
+        static_cast<std::size_t>(
+            cellsX * cellsY
+            ),
+        -1
+        );
+
+
     std::vector<Candidate> candidates;
 
     candidates.reserve(
         static_cast<std::size_t>(
-            targetPointCount * 1.2
+            cellsX * cellsY
             )
         );
 
 
-    // Deterministic pseudo-random generator.
-    std::mt19937 rng(12345);
-
-    std::uniform_real_distribution<float> random01(
-        0.0f,
-        1.0f
-        );
-
+    // ---------------------------------------------------------
+    // Find strongest edge in every cell
+    // ---------------------------------------------------------
 
     for (int y = 1;
          y < height - 1;
@@ -2709,110 +2735,43 @@ void MainWindow::generateCustomImagePoints()
              x < width - 1;
              ++x) {
 
-
             const std::size_t index =
                 static_cast<std::size_t>(
                     y * width + x
                     );
 
-
             const float strength =
                 edgeStrength[index];
 
 
-            // -------------------------------------------------
-            // Probability weighting
+            // Ignore extremely weak pixels.
             //
-            // Strong edges are significantly more likely
-            // to become points.
-            // -------------------------------------------------
-
-            const float probability =
-                static_cast<float>(
-                    density *
-                    5.0f *
-                    strength *
-                    strength
-                    );
-
-
-            if (random01(rng) >
-                std::min(
-                    probability,
-                    1.0f
-                    )) {
-
+            // This is important for photographic backgrounds.
+            if (strength < 0.20f)
                 continue;
-            }
 
 
-            candidates.push_back(
-                {
-                    QPointF(
-                        static_cast<double>(x) /
-                            static_cast<double>(width - 1),
+            const int cellX =
+                x / cellSize;
 
-                        static_cast<double>(y) /
-                            static_cast<double>(height - 1)
-                        ),
-
-                    strength
-                }
-                );
-        }
-    }
+            const int cellY =
+                y / cellSize;
 
 
-    // =========================================================
-    // FALLBACK
-    //
-    // Make sure we don't end up with too few points on
-    // very simple images.
-    // =========================================================
-
-    if (static_cast<int>(candidates.size()) <
-        minPoints) {
+            const int cellIndex =
+                cellY * cellsX + cellX;
 
 
-        candidates.clear();
-
-
-        const double fallbackStep =
-            std::sqrt(
-                totalPixels /
-                static_cast<double>(
-                    minPoints
-                    )
-                );
-
-
-        const int step =
-            std::max(
-                1,
-                static_cast<int>(
-                    fallbackStep
-                    )
-                );
-
-
-        for (int y = 1;
-             y < height - 1;
-             y += step) {
-
-            for (int x = 1;
-                 x < width - 1;
-                 x += step) {
-
-
-                const std::size_t index =
+            const int existing =
+                bestCandidate[
                     static_cast<std::size_t>(
-                        y * width + x
-                        );
+                        cellIndex
+                        )
+            ];
 
 
-                const float strength =
-                    edgeStrength[index];
-
+            // No candidate in this cell yet.
+            if (existing == -1) {
 
                 candidates.push_back(
                     {
@@ -2827,31 +2786,208 @@ void MainWindow::generateCustomImagePoints()
                         strength
                     }
                     );
+
+
+                bestCandidate[
+                    static_cast<std::size_t>(
+                        cellIndex
+                        )
+                ] =
+                    static_cast<int>(
+                        candidates.size() - 1
+                        );
+
+            }
+            // Replace the existing point if this pixel
+            // has a stronger edge.
+            else if (
+                strength >
+                candidates[
+                    static_cast<std::size_t>(
+                        existing
+                        )
+            ].strength
+                ) {
+
+                candidates[
+                    static_cast<std::size_t>(
+                        existing
+                        )
+                ] =
+                    {
+                        QPointF(
+                            static_cast<double>(x) /
+                                static_cast<double>(width - 1),
+
+                            static_cast<double>(y) /
+                                static_cast<double>(height - 1)
+                            ),
+
+                        strength
+                    };
             }
         }
     }
 
 
     // =========================================================
+    // FALLBACK
+    //
+    // If the image has very little detectable structure,
+    // reduce the cell size temporarily to find more points.
+    // =========================================================
+
+    if (static_cast<int>(candidates.size()) < minPoints) {
+
+        candidates.clear();
+
+        const int fallbackCellSize =
+            std::max(2, cellSize / 2);
+
+
+        const int fallbackCellsX =
+            (width + fallbackCellSize - 1) /
+            fallbackCellSize;
+
+        const int fallbackCellsY =
+            (height + fallbackCellSize - 1) /
+            fallbackCellSize;
+
+
+        std::vector<int> fallbackBest(
+            static_cast<std::size_t>(
+                fallbackCellsX *
+                fallbackCellsY
+                ),
+            -1
+            );
+
+
+        for (int y = 1;
+             y < height - 1;
+             ++y) {
+
+            for (int x = 1;
+                 x < width - 1;
+                 ++x) {
+
+                const std::size_t index =
+                    static_cast<std::size_t>(
+                        y * width + x
+                        );
+
+                const float strength =
+                    edgeStrength[index];
+
+
+                if (strength < 0.10f)
+                    continue;
+
+
+                const int cx =
+                    x / fallbackCellSize;
+
+                const int cy =
+                    y / fallbackCellSize;
+
+
+                const int cellIndex =
+                    cy * fallbackCellsX + cx;
+
+
+                const int existing =
+                    fallbackBest[
+                        static_cast<std::size_t>(
+                            cellIndex
+                            )
+                ];
+
+
+                if (existing == -1) {
+
+                    candidates.push_back(
+                        {
+                            QPointF(
+                                static_cast<double>(x) /
+                                    static_cast<double>(width - 1),
+
+                                static_cast<double>(y) /
+                                    static_cast<double>(height - 1)
+                                ),
+
+                            strength
+                        }
+                        );
+
+
+                    fallbackBest[
+                        static_cast<std::size_t>(
+                            cellIndex
+                            )
+                    ] =
+                        static_cast<int>(
+                            candidates.size() - 1
+                            );
+
+                }
+                else if (
+                    strength >
+                    candidates[
+                        static_cast<std::size_t>(
+                            existing
+                            )
+                ].strength
+                    ) {
+
+                    candidates[
+                        static_cast<std::size_t>(
+                            existing
+                            )
+                    ] =
+                        {
+                            QPointF(
+                                static_cast<double>(x) /
+                                    static_cast<double>(width - 1),
+
+                                static_cast<double>(y) /
+                                    static_cast<double>(height - 1)
+                                ),
+
+                            strength
+                        };
+                }
+            }
+        }
+    }
+
+    // =========================================================
     // LIMIT TOTAL POINT COUNT
+    //
+    // IMPORTANT:
+    // The entire image has already been scanned.
+    // Now keep the strongest points globally.
     // =========================================================
 
     if (static_cast<int>(candidates.size()) >
         maxPoints) {
 
-
-        std::shuffle(
+        std::partial_sort(
             candidates.begin(),
+            candidates.begin() + maxPoints,
             candidates.end(),
-            rng
-            );
 
+            [](const Candidate& a,
+               const Candidate& b)
+            {
+                return a.strength >
+                       b.strength;
+            }
+            );
 
         candidates.resize(
             maxPoints
             );
     }
-
 
     // =========================================================
     // SORT BY EDGE STRENGTH
