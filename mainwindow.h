@@ -23,6 +23,12 @@
 #include <QTimer>
 #include <QWidget>
 
+#include <QThread>
+#include <QProgressDialog>
+#include <QPointer>
+#include <QMetaObject>
+#include <QElapsedTimer>
+
 #include <vector>
 #include <deque>
 #include <functional>
@@ -47,10 +53,23 @@ class MainWindow : public QMainWindow
 
 public:
     explicit MainWindow(QWidget* parent = nullptr);
+    ~MainWindow();
+
     void paintVisualization(QPainter* p, const QRect& rect);
     void updateVisualizationCenter(const QSize& size);
     void loadCustomImage();
+
     void generateCustomImagePoints();
+
+    void generateCustomImagePointsWorker(
+        const QImage& sourceImage,
+        std::vector<QPointF>& outputPoints,
+        std::vector<float>& outputStrengths,
+        const std::function<void(int)>& progressCallback
+        );
+
+    void startCustomImageProcessing();
+
     void applyPointDensityFilter(std::vector<Candidate>& candidates);
     void applyAdaptiveSpatialDistribution(std::vector<Candidate>& candidates);
 
@@ -60,8 +79,15 @@ protected:
 
 private:
     QImage customImage_;
+
     std::vector<QPointF> customImagePoints_;
     std::vector<float> customImagePointStrengths_;
+
+    QThread* customImageProcessingThread_ = nullptr;
+
+    bool customImageProcessing_ = false;
+
+    quint64 customImageProcessingRequest_ = 0;
 
     // Current animated particle positions.
     std::vector<QPointF> customImageParticlePositions_;
@@ -78,6 +104,12 @@ private:
 
     double customImageAnimationTime_ = 0.0;
 
+    QPixmap customImageBuffer_;
+    std::size_t lastDrawnIndex_ = 0;
+    QSize lastWidgetSize_;
+
+    void resetCustomImageBuffer();
+
     // ---------------------------------------------------------
     // Custom Image drawing
     // ---------------------------------------------------------
@@ -86,7 +118,7 @@ private:
 
     bool customImageDrawingFinished_ = false;
 
-    double customImageDrawSpeed_ = 8.0;
+    double customImageDrawSpeed_ = 220.0; // bigger number draws more points per timer step, making points drawing faster
 
     // =========================================================
     // CUSTOM IMAGE DYNAMICAL SYSTEM
@@ -389,4 +421,5 @@ private:
     // QLabel* statusDtLabel_ = nullptr;
     // QLabel* statusTimeLabel_ = nullptr;
     // QLabel* statusRunningLabel_ = nullptr;
+
 };
