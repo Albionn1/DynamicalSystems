@@ -16,7 +16,6 @@
 #include <deque>
 #include <limits>
 #include <vector>
-#include <random>
 
 // Visualization Widget class
 class VisualizationWidget : public QWidget {
@@ -1274,7 +1273,7 @@ void MainWindow::paintVisualization(
                 const float strength =
                     customImagePointStrengths_[i];
 
-                if (strength < 0.45f)
+                if (strength < 0.007f) //was 0.55 but i wanted more strength
                     continue;
 
                 const QPointF& point =
@@ -2290,6 +2289,7 @@ void MainWindow::paintVisualization(
     }
 }
 
+
 void MainWindow::saveSimulationImage(const QString& filename)
 {
     if (!visualizationWidget_)
@@ -2830,13 +2830,28 @@ void MainWindow::generateCustomImagePoints()
     // SETTINGS
     // =========================================================
 
-    const int cellSize = 4;
+    const int cellSize = 2;
 
-    const int maxPoints = 25000;
+    // Final desired range.
+    const int maxPoints = 75000; //default 45000
+    const int minPoints = 15000;
 
-    const int minPoints = 10000;
-
+    // We intentionally allow a much larger candidate pool.
+    // Density/distribution will reduce it later.
     const int maxProcessingSize = 1200;
+
+
+    // =========================================================
+    // IMPORTANCE WEIGHTS
+    // =========================================================
+
+    // Edge information remains dominant.
+    constexpr double edgeWeight =
+        0.65;
+
+    // Local contrast / texture.
+    constexpr double textureWeight =
+        0.35;
 
 
     // =========================================================
@@ -2873,21 +2888,29 @@ void MainWindow::generateCustomImagePoints()
         image.height();
 
 
-    if (width < 5 || height < 5)
+    if (width < 7 || height < 7)
         return;
 
 
     // =========================================================
-    // MULTI-SCALE EDGE MAPS
+    // IMAGE PIXEL ACCESS
+    // =========================================================
+
+    auto pixel =
+        [&](int x, int y) -> int
+    {
+        return image.constScanLine(y)[x];
+    };
+
+
+    // =========================================================
+    // EDGE MAPS
     //
-    // We calculate:
+    // Three scales:
     //
-    // 1. Fine detail
-    // 2. Medium detail
-    // 3. Broad structure
-    //
-    // Each scale contributes differently to the final
-    // point importance.
+    // Fine   = tiny details
+    // Medium = normal structures
+    // Broad  = larger structures
     // =========================================================
 
     std::vector<float> fineEdges(
@@ -2919,16 +2942,8 @@ void MainWindow::generateCustomImagePoints()
 
 
     // =========================================================
-    // HELPER: SOBEL GRADIENT
-    //
-    // We use different sampling distances for each scale.
+    // FINE SOBEL
     // =========================================================
-
-    // ---------------------------------------------------------
-    // FINE SCALE
-    //
-    // Detects small details.
-    // ---------------------------------------------------------
 
     for (int y = 1;
          y < height - 1;
@@ -3017,11 +3032,7 @@ void MainWindow::generateCustomImagePoints()
 
 
     // =========================================================
-    // MEDIUM SCALE
-    //
-    // Compare pixels approximately 2 pixels apart.
-    // This captures larger features while ignoring some
-    // tiny pixel-level noise.
+    // MEDIUM EDGE
     // =========================================================
 
     for (int y = 2;
@@ -3032,28 +3043,17 @@ void MainWindow::generateCustomImagePoints()
              x < width - 2;
              ++x) {
 
-            const int left =
-                image.constScanLine(y)[x - 2];
-
-            const int right =
-                image.constScanLine(y)[x + 2];
-
-            const int top =
-                image.constScanLine(y - 2)[x];
-
-            const int bottom =
-                image.constScanLine(y + 2)[x];
-
-
             const float gx =
                 static_cast<float>(
-                    right - left
+                    pixel(x + 2, y) -
+                    pixel(x - 2, y)
                     );
 
 
             const float gy =
                 static_cast<float>(
-                    bottom - top
+                    pixel(x, y + 2) -
+                    pixel(x, y - 2)
                     );
 
 
@@ -3081,11 +3081,7 @@ void MainWindow::generateCustomImagePoints()
 
 
     // =========================================================
-    // BROAD SCALE
-    //
-    // Compare pixels farther apart.
-    //
-    // This helps preserve large structural boundaries.
+    // BROAD EDGE
     // =========================================================
 
     for (int y = 4;
@@ -3096,28 +3092,17 @@ void MainWindow::generateCustomImagePoints()
              x < width - 4;
              ++x) {
 
-            const int left =
-                image.constScanLine(y)[x - 4];
-
-            const int right =
-                image.constScanLine(y)[x + 4];
-
-            const int top =
-                image.constScanLine(y - 4)[x];
-
-            const int bottom =
-                image.constScanLine(y + 4)[x];
-
-
             const float gx =
                 static_cast<float>(
-                    right - left
+                    pixel(x + 4, y) -
+                    pixel(x - 4, y)
                     );
 
 
             const float gy =
                 static_cast<float>(
-                    bottom - top
+                    pixel(x, y + 4) -
+                    pixel(x, y - 4)
                     );
 
 
@@ -3144,14 +3129,8 @@ void MainWindow::generateCustomImagePoints()
     }
 
 
-    if (maxFine <= 0.0f &&
-        maxMedium <= 0.0f &&
-        maxBroad <= 0.0f)
-        return;
-
-
     // =========================================================
-    // NORMALIZE EACH SCALE
+    // NORMALIZE EDGE MAPS
     // =========================================================
 
     for (float& value :
@@ -3159,10 +3138,11 @@ void MainWindow::generateCustomImagePoints()
 
         value =
             std::clamp(
-                value / std::max(
-                    maxFine,
-                    0.0001f
-                    ),
+                value /
+                    std::max(
+                        maxFine,
+                        0.0001f
+                        ),
                 0.0f,
                 1.0f
                 );
@@ -3181,10 +3161,11 @@ void MainWindow::generateCustomImagePoints()
 
         value =
             std::clamp(
-                value / std::max(
-                    maxMedium,
-                    0.0001f
-                    ),
+                value /
+                    std::max(
+                        maxMedium,
+                        0.0001f
+                        ),
                 0.0f,
                 1.0f
                 );
@@ -3203,10 +3184,11 @@ void MainWindow::generateCustomImagePoints()
 
         value =
             std::clamp(
-                value / std::max(
-                    maxBroad,
-                    0.0001f
-                    ),
+                value /
+                    std::max(
+                        maxBroad,
+                        0.0001f
+                        ),
                 0.0f,
                 1.0f
                 );
@@ -3221,19 +3203,7 @@ void MainWindow::generateCustomImagePoints()
 
 
     // =========================================================
-    // COMBINE MULTIPLE SCALES
-    //
-    // Fine:
-    //     45%
-    //
-    // Medium:
-    //     35%
-    //
-    // Broad:
-    //     20%
-    //
-    // Fine details remain important, but large structures
-    // are still preserved.
+    // COMBINED EDGE STRENGTH
     // =========================================================
 
     std::vector<float> edgeStrength(
@@ -3256,7 +3226,7 @@ void MainWindow::generateCustomImagePoints()
             broadEdges[i];
 
 
-        double combined =
+        const double combined =
             fine * 0.45 +
             medium * 0.35 +
             broad * 0.20;
@@ -3274,50 +3244,295 @@ void MainWindow::generateCustomImagePoints()
 
 
     // =========================================================
-    // CREATE SPATIAL CELLS
+    // LOCAL CONTRAST / TEXTURE MAP
+    //
+    // This is the important part of #8.
+    //
+    // Instead of only asking:
+    //
+    //     "Is this pixel on an edge?"
+    //
+    // we also ask:
+    //
+    //     "Does this pixel live inside a locally
+    //      interesting region?"
+    //
+    // This helps preserve:
+    //
+    // - hair texture
+    // - skin detail
+    // - fabric
+    // - small shadows
+    // - wrinkles
+    // - foliage
+    // - noisy/complex backgrounds
     // =========================================================
 
-    const int cellsX =
-        (width + cellSize - 1) /
-        cellSize;
-
-
-    const int cellsY =
-        (height + cellSize - 1) /
-        cellSize;
-
-
-    std::vector<int> bestCandidate(
-        static_cast<std::size_t>(
-            cellsX * cellsY
-            ),
-        -1
+    std::vector<float> textureStrength(
+        static_cast<std::size_t>(width * height),
+        0.0f
         );
+
+
+    float maxTexture =
+        0.0f;
+
+
+    // ---------------------------------------------------------
+    // Local contrast uses a 9x9 neighborhood.
+    // ---------------------------------------------------------
+
+    for (int y = 4;
+         y < height - 4;
+         ++y) {
+
+        for (int x = 4;
+             x < width - 4;
+             ++x) {
+
+            const int center =
+                pixel(x, y);
+
+
+            double sum =
+                0.0;
+
+            double squaredSum =
+                0.0;
+
+            int samples =
+                0;
+
+
+            // -------------------------------------------------
+            // Sample local neighborhood.
+            //
+            // Step = 2 keeps this reasonably fast.
+            // -------------------------------------------------
+
+            for (int oy = -4;
+                 oy <= 4;
+                 oy += 2) {
+
+                for (int ox = -4;
+                     ox <= 4;
+                     ox += 2) {
+
+                    const int value =
+                        pixel(
+                            x + ox,
+                            y + oy
+                            );
+
+
+                    sum +=
+                        value;
+
+                    squaredSum +=
+                        static_cast<double>(
+                            value * value
+                            );
+
+                    ++samples;
+                }
+            }
+
+
+            const double mean =
+                sum /
+                static_cast<double>(
+                    samples
+                    );
+
+
+            const double variance =
+                std::max(
+                    0.0,
+                    squaredSum /
+                            static_cast<double>(
+                                samples
+                                )
+                        -
+                        mean * mean
+                    );
+
+
+            const double standardDeviation =
+                std::sqrt(
+                    variance
+                    );
+
+
+            // -------------------------------------------------
+            // Normalize approximately to 0..1.
+            //
+            // 64 gray levels of local variation is considered
+            // extremely strong texture.
+            // -------------------------------------------------
+
+            double texture =
+                standardDeviation /
+                64.0;
+
+
+            texture =
+                std::clamp(
+                    texture,
+                    0.0,
+                    1.0
+                    );
+
+
+            // Slight gamma.
+            texture =
+                std::pow(
+                    texture,
+                    0.75
+                    );
+
+
+            const std::size_t index =
+                static_cast<std::size_t>(
+                    y * width + x
+                    );
+
+
+            textureStrength[index] =
+                static_cast<float>(
+                    texture
+                    );
+
+
+            if (texture >
+                maxTexture) {
+
+                maxTexture =
+                    static_cast<float>(
+                        texture
+                        );
+            }
+        }
+    }
+
+
+    // =========================================================
+    // ADD A SMALL FINE-TEXTURE COMPONENT
+    //
+    // Local contrast alone can sometimes be too smooth.
+    //
+    // The fine edge map helps identify tiny texture.
+    // =========================================================
+
+    for (std::size_t i = 0;
+         i < textureStrength.size();
+         ++i) {
+
+        const double texture =
+            textureStrength[i];
+
+        const double fine =
+            fineEdges[i];
+
+
+        const double combined =
+            texture * 0.75 +
+            fine * 0.25;
+
+
+        textureStrength[i] =
+            static_cast<float>(
+                std::clamp(
+                    combined,
+                    0.0,
+                    1.0
+                    )
+                );
+    }
+
+
+    // =========================================================
+    // FINAL IMPORTANCE
+    //
+    // Edge       = 65%
+    // Texture    = 35%
+    //
+    // Edges remain dominant.
+    // Texture fills in information between edges.
+    // =========================================================
+
+    std::vector<float> finalStrength(
+        static_cast<std::size_t>(width * height),
+        0.0f
+        );
+
+
+    for (std::size_t i = 0;
+         i < finalStrength.size();
+         ++i) {
+
+        const double edge =
+            edgeStrength[i];
+
+
+        const double texture =
+            textureStrength[i];
+
+
+        const double combined =
+            edge * edgeWeight +
+            texture * textureWeight;
+
+
+        finalStrength[i] =
+            static_cast<float>(
+                std::clamp(
+                    combined,
+                    0.0,
+                    1.0
+                    )
+                );
+    }
+
+
+    // =========================================================
+    // SPATIAL CELLS
+    //
+    // IMPORTANT:
+    //
+    // We DON'T limit ourselves to one candidate per cell
+    // anymore.
+    //
+    // We allow multiple candidates inside a cell so the
+    // density filter can make the final decision later.
+    // =========================================================
+
+    const int candidateStep =
+        2;
 
 
     std::vector<Candidate> candidates;
 
 
+    // Reserve a large candidate pool.
     candidates.reserve(
         static_cast<std::size_t>(
-            cellsX * cellsY
+            ((width - 2) / candidateStep) *
+            ((height - 2) / candidateStep)
             )
         );
 
 
     // =========================================================
-    // BUILD CANDIDATES
-    //
-    // One strongest point per spatial cell.
+    // BUILD LARGE CANDIDATE POOL
     // =========================================================
 
     for (int y = 1;
          y < height - 1;
-         ++y) {
+         y += candidateStep) {
 
         for (int x = 1;
              x < width - 1;
-             ++x) {
+             x += candidateStep) {
 
             const std::size_t index =
                 static_cast<std::size_t>(
@@ -3326,39 +3541,79 @@ void MainWindow::generateCustomImagePoints()
 
 
             const float strength =
-                edgeStrength[index];
+                finalStrength[index];
 
 
-            if (strength < 0.15f)
+            // Very low importance is ignored.
+            //
+            // Lower threshold than before so texture isn't
+            // accidentally removed.
+            if (strength < 0.06f)
                 continue;
 
 
-            const int cellX =
-                x / cellSize;
+            Candidate candidate;
 
 
-            const int cellY =
-                y / cellSize;
+            candidate.point =
+                QPointF(
+                    static_cast<double>(x) /
+                        static_cast<double>(width - 1),
+
+                    static_cast<double>(y) /
+                        static_cast<double>(height - 1)
+                    );
 
 
-            const int cellIndex =
-                cellY * cellsX +
-                cellX;
+            candidate.strength =
+                strength;
 
 
-            const int existing =
-                bestCandidate[
+            candidate.edgeStrength =
+                edgeStrength[index];
+
+
+            candidates.push_back(
+                candidate
+                );
+        }
+    }
+
+
+    // =========================================================
+    // FALLBACK
+    //
+    // If we somehow don't have enough candidates, scan every
+    // pixel using a very low threshold.
+    // =========================================================
+
+    if (static_cast<int>(candidates.size()) <
+        minPoints) {
+
+        candidates.clear();
+
+
+        for (int y = 1;
+             y < height - 1;
+             ++y) {
+
+            for (int x = 1;
+                 x < width - 1;
+                 ++x) {
+
+                const std::size_t index =
                     static_cast<std::size_t>(
-                        cellIndex
-                        )
-            ];
+                        y * width + x
+                        );
 
 
-            // =================================================
-            // FIRST CANDIDATE
-            // =================================================
+                const float strength =
+                    finalStrength[index];
 
-            if (existing == -1) {
+
+                if (strength < 0.025f)
+                    continue;
+
 
                 Candidate candidate;
 
@@ -3378,259 +3633,28 @@ void MainWindow::generateCustomImagePoints()
 
 
                 candidate.edgeStrength =
-                    strength;
+                    edgeStrength[index];
 
 
                 candidates.push_back(
                     candidate
                     );
-
-
-                bestCandidate[
-                    static_cast<std::size_t>(
-                        cellIndex
-                        )
-                ] =
-                    static_cast<int>(
-                        candidates.size() - 1
-                        );
-            }
-
-
-            // =================================================
-            // STRONGER CANDIDATE
-            // =================================================
-
-            else if (
-                strength >
-                candidates[
-                    static_cast<std::size_t>(
-                        existing
-                        )
-            ].strength
-                ) {
-
-                Candidate& candidate =
-                    candidates[
-                        static_cast<std::size_t>(
-                            existing
-                            )
-                ];
-
-
-                candidate.point =
-                    QPointF(
-                        static_cast<double>(x) /
-                            static_cast<double>(width - 1),
-
-                        static_cast<double>(y) /
-                            static_cast<double>(height - 1)
-                        );
-
-
-                candidate.strength =
-                    strength;
-
-
-                candidate.edgeStrength =
-                    strength;
             }
         }
-    }
-
-
-    // =========================================================
-    // FALLBACK
-    // =========================================================
-
-    if (static_cast<int>(candidates.size()) <
-        minPoints) {
-
-        candidates.clear();
-
-
-        const int fallbackCellSize =
-            std::max(
-                2,
-                cellSize / 2
-                );
-
-
-        const int fallbackCellsX =
-            (width +
-             fallbackCellSize - 1) /
-            fallbackCellSize;
-
-
-        const int fallbackCellsY =
-            (height +
-             fallbackCellSize - 1) /
-            fallbackCellSize;
-
-
-        std::vector<int> fallbackBest(
-            static_cast<std::size_t>(
-                fallbackCellsX *
-                fallbackCellsY
-                ),
-            -1
-            );
-
-
-        for (int y = 1;
-             y < height - 1;
-             ++y) {
-
-            for (int x = 1;
-                 x < width - 1;
-                 ++x) {
-
-                const std::size_t index =
-                    static_cast<std::size_t>(
-                        y * width + x
-                        );
-
-
-                const float strength =
-                    edgeStrength[index];
-
-
-                if (strength < 0.07f)
-                    continue;
-
-
-                const int cellX =
-                    x / fallbackCellSize;
-
-
-                const int cellY =
-                    y / fallbackCellSize;
-
-
-                const int cellIndex =
-                    cellY * fallbackCellsX +
-                    cellX;
-
-
-                const int existing =
-                    fallbackBest[
-                        static_cast<std::size_t>(
-                            cellIndex
-                            )
-                ];
-
-
-                if (existing == -1) {
-
-                    Candidate candidate;
-
-
-                    candidate.point =
-                        QPointF(
-                            static_cast<double>(x) /
-                                static_cast<double>(width - 1),
-
-                            static_cast<double>(y) /
-                                static_cast<double>(height - 1)
-                            );
-
-
-                    candidate.strength =
-                        strength;
-
-
-                    candidate.edgeStrength =
-                        strength;
-
-
-                    candidates.push_back(
-                        candidate
-                        );
-
-
-                    fallbackBest[
-                        static_cast<std::size_t>(
-                            cellIndex
-                            )
-                    ] =
-                        static_cast<int>(
-                            candidates.size() - 1
-                            );
-                }
-
-
-                else if (
-                    strength >
-                    candidates[
-                        static_cast<std::size_t>(
-                            existing
-                            )
-                ].strength
-                    ) {
-
-                    Candidate& candidate =
-                        candidates[
-                            static_cast<std::size_t>(
-                                existing
-                                )
-                    ];
-
-
-                    candidate.point =
-                        QPointF(
-                            static_cast<double>(x) /
-                                static_cast<double>(width - 1),
-
-                            static_cast<double>(y) /
-                                static_cast<double>(height - 1)
-                            );
-
-
-                    candidate.strength =
-                        strength;
-
-
-                    candidate.edgeStrength =
-                        strength;
-                }
-            }
-        }
-    }
-
-
-    // =========================================================
-    // LIMIT TOTAL CANDIDATES
-    // =========================================================
-
-    if (static_cast<int>(candidates.size()) >
-        maxPoints) {
-
-        std::partial_sort(
-            candidates.begin(),
-            candidates.begin() + maxPoints,
-            candidates.end(),
-
-            [](const Candidate& a,
-               const Candidate& b)
-            {
-                return a.strength >
-                       b.strength;
-            }
-            );
-
-
-        candidates.resize(
-            maxPoints
-            );
     }
 
 
     // =========================================================
     // EDGE-AWARE PRIORITY
+    //
+    // Edges still get a controlled boost.
+    //
+    // Texture can create candidates, but edges get preference
+    // when candidates compete for the same spatial region.
     // =========================================================
 
     constexpr double edgePriorityBoost =
-        0.25;
+        0.22;
 
 
     for (Candidate& candidate :
@@ -3674,16 +3698,37 @@ void MainWindow::generateCustomImagePoints()
 
 
     // =========================================================
+    // IMPORTANT:
+    //
+    // DO NOT partial_sort / resize to maxPoints here.
+    //
+    // The previous version was throwing away useful texture
+    // candidates before the spatial algorithms could evaluate
+    // them.
+    // =========================================================
+
+
+    // =========================================================
     // RESERVE FINAL ARRAYS
     // =========================================================
 
     customImagePoints_.reserve(
-        candidates.size()
+        std::min(
+            candidates.size(),
+            static_cast<std::size_t>(
+                maxPoints
+                )
+            )
         );
 
 
     customImagePointStrengths_.reserve(
-        candidates.size()
+        std::min(
+            candidates.size(),
+            static_cast<std::size_t>(
+                maxPoints
+                )
+            )
         );
 
 
@@ -3703,6 +3748,35 @@ void MainWindow::generateCustomImagePoints()
     applyAdaptiveSpatialDistribution(
         candidates
         );
+
+
+    // =========================================================
+    // FINAL SAFETY LIMIT
+    //
+    // This is intentionally AFTER spatial processing.
+    // =========================================================
+
+    if (static_cast<int>(candidates.size()) >
+        maxPoints) {
+
+        std::partial_sort(
+            candidates.begin(),
+            candidates.begin() + maxPoints,
+            candidates.end(),
+
+            [](const Candidate& a,
+               const Candidate& b)
+            {
+                return a.strength >
+                       b.strength;
+            }
+            );
+
+
+        candidates.resize(
+            maxPoints
+            );
+    }
 
 
     // =========================================================
@@ -3730,7 +3804,6 @@ void MainWindow::generateCustomImagePoints()
     customImageDrawIndex_ = 0;
 }
 
-
 void MainWindow::applyPointDensityFilter(
     std::vector<Candidate>& candidates)
 {
@@ -3742,8 +3815,8 @@ void MainWindow::applyPointDensityFilter(
     // POINT DENSITY SETTINGS
     // ========================================================
 
-    constexpr double maxSpacing = 0.0055;    //Default = 0.010
-    constexpr double minSpacing = 0.0018;   //Default = 0.0035
+    constexpr double maxSpacing = 0.0005;    //Default = 0.0055
+    constexpr double minSpacing = 0.00088;   //Default = 0.0018
 
 
     // ========================================================
