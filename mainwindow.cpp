@@ -23,6 +23,7 @@
 #include <vector>
 #include <thread>
 #include <functional>
+#include <atomic>
 
 // Parallel worker utility for row-based parallelization across CPU cores
 template <typename Func>
@@ -352,6 +353,301 @@ void MainWindow::createSidebar()
             this, &MainWindow::loadCustomImage);
 
     sidebarLayout_->addWidget(customImageButton);
+
+    // ---------------------------------------------------------
+    // Custom Image processing controls
+    // ---------------------------------------------------------
+
+    auto* customSettingsFrame =
+        new QFrame(sidebar_);
+
+    customSettingsFrame->setStyleSheet(
+        "QFrame {"
+        "    background-color: #292b2f;"
+        "    border: 1px solid #36383d;"
+        "    border-radius: 8px;"
+        "}"
+        "QLabel {"
+        "    color: #92969d;"
+        "    font-size: 9px;"
+        "}"
+        "QCheckBox {"
+        "    color: #bfc2c7;"
+        "    font-size: 10px;"
+        "}"
+        );
+
+    auto* customSettingsLayout =
+        new QVBoxLayout(customSettingsFrame);
+
+    customSettingsLayout->setContentsMargins(
+        10, 8, 10, 8
+        );
+
+    customSettingsLayout->setSpacing(4);
+
+    auto* customSettingsTitle =
+        new QLabel(
+            "CUSTOM IMAGE SETTINGS",
+            customSettingsFrame
+            );
+
+    customSettingsTitle->setStyleSheet(
+        "QLabel {"
+        "    color: #00bcd4;"
+        "    font-size: 9px;"
+        "    font-weight: 700;"
+        "    letter-spacing: 1px;"
+        "}"
+        );
+
+    customSettingsLayout->addWidget(
+        customSettingsTitle
+        );
+
+    auto addCustomSlider =
+        [&](const QString& name,
+            int minimum,
+            int maximum,
+            int value,
+            QSlider*& slider,
+            QLabel*& valueLabel)
+    {
+        auto* row =
+            new QHBoxLayout();
+
+        row->setSpacing(4);
+
+        auto* label =
+            new QLabel(
+                name,
+                customSettingsFrame
+                );
+
+        valueLabel =
+            new QLabel(
+                customSettingsFrame
+                );
+
+        valueLabel->setAlignment(
+            Qt::AlignRight |
+            Qt::AlignVCenter
+            );
+
+        row->addWidget(label, 1);
+        row->addWidget(valueLabel);
+
+        customSettingsLayout->addLayout(
+            row
+            );
+
+        slider =
+            new QSlider(
+                Qt::Horizontal,
+                customSettingsFrame
+                );
+
+        slider->setRange(
+            minimum,
+            maximum
+            );
+
+        slider->setValue(
+            value
+            );
+
+        slider->setCursor(
+            Qt::PointingHandCursor
+            );
+
+        slider->setFixedHeight(
+            16
+            );
+
+        customSettingsLayout->addWidget(
+            slider
+            );
+
+        return slider;
+    };
+
+    QLabel* qualityValueLabel = nullptr;
+    QLabel* detailValueLabel = nullptr;
+    QLabel* shadowValueLabel = nullptr;
+    QLabel* textureValueLabel = nullptr;
+    QLabel* densityValueLabel = nullptr;
+
+    addCustomSlider("Quality", 1, 10, 10,
+                    customQualitySlider_, qualityValueLabel);
+
+    addCustomSlider("Detail", 1, 100, 100,
+                    customDetailSlider_, detailValueLabel);
+
+    addCustomSlider("Shadows", 0, 100, 0,
+                    customShadowSlider_, shadowValueLabel);
+
+    addCustomSlider("Texture", 0, 100, 35,
+                    customTextureSlider_, textureValueLabel);
+
+    // addCustomSlider("Density", 0, 100, 50,
+    //                 customDensitySlider_, densityValueLabel); //OLD VALUES SLIDER
+    addCustomSlider("Density", 0, 200, 100,
+                    customDensitySlider_, densityValueLabel);
+
+    customColorCheck_ =
+        new QCheckBox(
+            "Use original image colours",
+            customSettingsFrame
+            );
+
+    customColorCheck_->setChecked(false);
+
+    customSettingsLayout->addWidget(
+        customColorCheck_
+        );
+
+    auto updateQualityLabel =
+        [qualityValueLabel](int value)
+    {
+        const int maxPoints =
+            25000 +
+            static_cast<int>(
+                (value / 10.0) *
+                (2500000 - 25000)
+                );
+
+        const int maxProcessing =
+            1200 +
+            static_cast<int>(
+                (value / 10.0) *
+                (3000 - 1200)
+                );
+
+        QString pointsText;
+
+        if (maxPoints >= 1000000) {
+            pointsText = QString("%1M")
+            .arg(maxPoints / 1000000.0, 0, 'f', 1);
+        } else {
+            pointsText = QString("%1k")
+            .arg(maxPoints / 1000);
+        }
+
+        qualityValueLabel->setText(
+            QString("%1 / %2px")
+                .arg(pointsText)
+                .arg(maxProcessing)
+            );
+    };
+
+    auto updateDetailLabel =
+        [detailValueLabel](int value)
+    {
+        const double threshold =
+            0.10 -
+            0.05 *
+                (
+                    static_cast<double>(value) /
+                    100.0
+                    );
+
+        detailValueLabel->setText(
+            QString::number(
+                threshold,
+                'f',
+                3
+                )
+            );
+    };
+
+    auto updateShadowLabel =
+        [shadowValueLabel](int value)
+    {
+        const double weight =
+            0.35 *
+            (
+                static_cast<double>(value) /
+                100.0
+                );
+
+        shadowValueLabel->setText(
+            QString::number(
+                weight,
+                'f',
+                2
+                )
+            );
+    };
+
+    auto updateTextureLabel =
+        [textureValueLabel](int value)
+    {
+        textureValueLabel->setText(
+            QString("%1 / %2")
+                .arg(100 - value)
+                .arg(value)
+            );
+    };
+
+    auto updateDensityLabel =
+        [densityValueLabel](int value)
+    {
+        // const double scale =
+        //     1.5 -
+        //     (
+        //         static_cast<double>(value) /
+        //         100.0
+        //         ); //OLD Density value
+        const double scale =
+            2.0 -
+            (
+                static_cast<double>(value) /
+                200.0 * 1.9
+                );
+
+        densityValueLabel->setText(
+            QString::number(
+                scale,
+                'f',
+                2
+                )
+            );
+    };
+
+    connect(customQualitySlider_, &QSlider::valueChanged,
+            this, updateQualityLabel);
+
+    connect(customDetailSlider_, &QSlider::valueChanged,
+            this, updateDetailLabel);
+
+    connect(customShadowSlider_, &QSlider::valueChanged,
+            this, updateShadowLabel);
+
+    connect(customTextureSlider_, &QSlider::valueChanged,
+            this, updateTextureLabel);
+
+    connect(customDensitySlider_, &QSlider::valueChanged,
+            this, updateDensityLabel);
+
+    connect(customColorCheck_, &QCheckBox::toggled,
+            this, [this](bool)
+            {
+                customImageBuffer_ = QPixmap();
+                lastDrawnIndex_ = 0;
+
+                if (visualizationWidget_)
+                    visualizationWidget_->update();
+            });
+
+    updateQualityLabel(customQualitySlider_->value());
+    updateDetailLabel(customDetailSlider_->value());
+    updateShadowLabel(customShadowSlider_->value());
+    updateTextureLabel(customTextureSlider_->value());
+    updateDensityLabel(customDensitySlider_->value());
+
+    sidebarLayout_->addWidget(
+        customSettingsFrame
+        );
 
     auto* analysisLabel = new QLabel("ANALYSIS", sidebar_);
     analysisLabel->setStyleSheet(
@@ -722,7 +1018,7 @@ void MainWindow::paintVisualization(QPainter* p, const QRect& rect)
                 );
 
             p->save();
-            p->setOpacity(0.50);
+            p->setOpacity(1.0);
             p->drawImage(originalRect, customImage_);
             p->restore();
 
@@ -777,9 +1073,59 @@ void MainWindow::paintVisualization(QPainter* p, const QRect& rect)
                     // Tighter radius scaling ensures dense edge areas blend seamlessly without clumping
                     const double radius = 0.85 + visualStrength * 0.5;
 
-                    // Muted, low-contrast slate grey to eliminate harsh brightness and eye strain
-                    bufPainter.setBrush(QColor(170, 175, 180, alpha)); //default 170, 175, 180, alpha
-                    bufPainter.drawEllipse(localPoint, radius, radius);
+                    // Default remains the existing muted grey.
+                    // Optional colour mode affects rendering only.
+                    QColor pointColor(
+                        170,
+                        175,
+                        180,
+                        alpha
+                        );
+
+                    if (customColorCheck_ &&
+                        customColorCheck_->isChecked() &&
+                        !customImage_.isNull()) {
+
+                        const int px =
+                            std::clamp(
+                                static_cast<int>(
+                                    point.x() *
+                                    customImage_.width()
+                                    ),
+                                0,
+                                customImage_.width() - 1
+                                );
+
+                        const int py =
+                            std::clamp(
+                                static_cast<int>(
+                                    point.y() *
+                                    customImage_.height()
+                                    ),
+                                0,
+                                customImage_.height() - 1
+                                );
+
+                        pointColor =
+                            customImage_.pixelColor(
+                                px,
+                                py
+                                );
+
+                        pointColor.setAlpha(
+                            alpha
+                            );
+                    }
+
+                    bufPainter.setBrush(
+                        pointColor
+                        );
+
+                    bufPainter.drawEllipse(
+                        localPoint,
+                        radius,
+                        radius
+                        );
                 }
 
                 lastDrawnIndex_ = count;
@@ -971,9 +1317,30 @@ void MainWindow::saveSimulationImage(const QString& filename)
 }
 
 void MainWindow::setSystem(int id) {
+    // Cancel any in-progress Custom Image analysis without
+    // blocking the GUI thread. The finished callback is ignored
+    // because the request ID changes.
+    if (customImageProcessingThread_ &&
+        customImageProcessingThread_->isRunning()) {
+
+        ++customImageProcessingRequest_;
+        customImageProcessingThread_->requestInterruption();
+    }
+
+    customImageProcessing_ = false;
+
+    if (customQualitySlider_) customQualitySlider_->setEnabled(true);
+    if (customDetailSlider_) customDetailSlider_->setEnabled(true);
+    if (customShadowSlider_) customShadowSlider_->setEnabled(true);
+    if (customTextureSlider_) customTextureSlider_->setEnabled(true);
+    if (customDensitySlider_) customDensitySlider_->setEnabled(true);
+    if (customColorCheck_) customColorCheck_->setEnabled(true);
+
     customImageActive_ = false;
     customImagePoints_.clear();
     customImageDrawIndex_ = 0;
+    customImageBuffer_ = QPixmap();
+    lastDrawnIndex_ = 0;
     customImageDrawingFinished_ = false;
     customImageAnimationTime_ = 0.0;
     customImage_ = QImage();
@@ -1373,6 +1740,17 @@ void MainWindow::loadCustomImage()
     poincarePoints_.clear();
 
     customImageProcessing_ = true;
+
+    customImageBuffer_ = QPixmap();
+    lastDrawnIndex_ = 0;
+
+    if (customQualitySlider_) customQualitySlider_->setEnabled(false);
+    if (customDetailSlider_) customDetailSlider_->setEnabled(false);
+    if (customShadowSlider_) customShadowSlider_->setEnabled(false);
+    if (customTextureSlider_) customTextureSlider_->setEnabled(false);
+    if (customDensitySlider_) customDensitySlider_->setEnabled(false);
+    if (customColorCheck_) customColorCheck_->setEnabled(false);
+
     simulationStarted_ = true;
     simulationActive_ = true;
 
@@ -1397,8 +1775,91 @@ void MainWindow::startCustomImageProcessing()
         return;
     }
 
-    const quint64 requestId = ++customImageProcessingRequest_;
-    const QImage sourceImage = customImage_;
+    const quint64 requestId =
+        ++customImageProcessingRequest_;
+
+    const QImage sourceImage =
+        customImage_;
+
+    CustomImageProcessingSettings settings;
+
+    const int quality =
+        customQualitySlider_
+            ? customQualitySlider_->value()
+            : 10;
+
+    settings.maxPoints =
+        25000 +
+        static_cast<int>(
+            (quality / 10.0) *
+            (2500000 - 25000)
+            );
+
+    settings.maxProcessingSize =
+        1200 +
+        static_cast<int>(
+            (quality / 10.0) *
+            (3000 - 1200)
+            );
+
+    settings.minPoints =
+        15000;
+
+    const int detail =
+        customDetailSlider_
+            ? customDetailSlider_->value()
+            : 100;
+
+    settings.detailThreshold =
+        0.10 -
+        0.05 *
+            (
+                static_cast<double>(detail) /
+                100.0
+                );
+
+    settings.fallbackThreshold =
+        std::max(
+            0.0125,
+            settings.detailThreshold * 0.5
+            );
+
+    const int texture =
+        customTextureSlider_
+            ? customTextureSlider_->value()
+            : 35;
+
+    settings.textureWeight =
+        static_cast<double>(texture) /
+        100.0;
+
+    settings.edgeWeight =
+        1.0 -
+        settings.textureWeight;
+
+    const int shadows =
+        customShadowSlider_
+            ? customShadowSlider_->value()
+            : 0;
+
+    settings.shadowWeight =
+        0.35 *
+        (
+            static_cast<double>(shadows) /
+            100.0
+            );
+
+    const int density =
+        customDensitySlider_
+            ? customDensitySlider_->value()
+            : 50;
+
+    settings.densityScale =
+        1.5 -
+        (
+            static_cast<double>(density) /
+            100.0
+            );
 
     auto resultPoints = std::make_shared<std::vector<QPointF>>();
     auto resultStrengths = std::make_shared<std::vector<float>>();
@@ -1417,7 +1878,7 @@ void MainWindow::startCustomImageProcessing()
     progressTimer->start();
 
     QThread* thread = QThread::create(
-        [this, sourceImage, resultPoints, resultStrengths, progressTimer, dialogGuard]()
+        [this, sourceImage, resultPoints, resultStrengths, progressTimer, dialogGuard, settings]()
         {
             auto reportProgress = [this, progressTimer, dialogGuard](int progress)
             {
@@ -1467,7 +1928,8 @@ void MainWindow::startCustomImageProcessing()
                 sourceImage,
                 *resultPoints,
                 *resultStrengths,
-                reportProgress
+                reportProgress,
+                settings
                 );
         }
         );
@@ -1475,6 +1937,13 @@ void MainWindow::startCustomImageProcessing()
     customImageProcessingThread_ = thread;
 
     connect(thread, &QThread::finished, this, [this, thread, requestId, resultPoints, resultStrengths, dialogGuard]() {
+        if (customQualitySlider_) customQualitySlider_->setEnabled(true);
+        if (customDetailSlider_) customDetailSlider_->setEnabled(true);
+        if (customShadowSlider_) customShadowSlider_->setEnabled(true);
+        if (customTextureSlider_) customTextureSlider_->setEnabled(true);
+        if (customDensitySlider_) customDensitySlider_->setEnabled(true);
+        if (customColorCheck_) customColorCheck_->setEnabled(true);
+
         if (dialogGuard) {
             dialogGuard->setValue(100);
             dialogGuard->setLabelText("Processing complete!");
@@ -1530,7 +1999,8 @@ void MainWindow::generateCustomImagePointsWorker(
     const QImage& sourceImage,
     std::vector<QPointF>& outputPoints,
     std::vector<float>& outputStrengths,
-    const std::function<void(int)>& progressCallback)
+    const std::function<void(int)>& progressCallback,
+    const CustomImageProcessingSettings& settings)
 {
     auto reportProgress = [&](int value) {
         if (progressCallback) progressCallback(value);
@@ -1546,12 +2016,20 @@ void MainWindow::generateCustomImagePointsWorker(
         return;
     }
 
-    const int maxPoints = 500000; //Raise this for more details, default is 75000
-    const int minPoints = 15000;
-    const int maxProcessingSize = 3000;
+    const int maxPoints =
+        settings.maxPoints;
 
-    constexpr double edgeWeight = 0.65;
-    constexpr double textureWeight = 0.35;
+    const int minPoints =
+        settings.minPoints;
+
+    const int maxProcessingSize =
+        settings.maxProcessingSize;
+
+    const double edgeWeight =
+        settings.edgeWeight;
+
+    const double textureWeight =
+        settings.textureWeight;
 
     QImage image = sourceImage.convertToFormat(QImage::Format_Grayscale8);
 
@@ -1733,10 +2211,50 @@ void MainWindow::generateCustomImagePointsWorker(
         }
     });
 
+    // Optional shadow emphasis. At 0 this does not alter the
+    // existing detection result.
+    if (settings.shadowWeight > 0.0) {
+        parallelForRows(0, height, [&](int startY, int endY) {
+            for (int y = startY; y < endY; ++y) {
+                const uchar* scan = image.constScanLine(y);
+                std::size_t idx = static_cast<std::size_t>(y * width);
+
+                for (int x = 0; x < width; ++x, ++idx) {
+                    const double brightness =
+                        static_cast<double>(scan[x]) / 255.0;
+
+                    const double shadowFactor =
+                        std::pow(
+                            std::clamp(1.0 - brightness, 0.0, 1.0),
+                            1.15
+                            );
+
+                    const double current =
+                        finalStrength[idx];
+
+                    const double boosted =
+                        current +
+                        shadowFactor *
+                            settings.shadowWeight *
+                            (1.0 - current);
+
+                    finalStrength[idx] =
+                        static_cast<float>(
+                            std::clamp(
+                                boosted,
+                                0.0,
+                                1.0
+                                )
+                            );
+                }
+            }
+        });
+    }
+
     if (QThread::currentThread()->isInterruptionRequested()) return;
     reportProgress(65);
 
-    const int candidateStep = 2;
+    const int candidateStep = 2;  //every 2 pixel , 1 is more detailed but alot of processing power
     std::vector<Candidate> candidates;
     candidates.reserve(static_cast<std::size_t>(((width - 2) / candidateStep) * ((height - 2) / candidateStep)));
 
@@ -1745,7 +2263,7 @@ void MainWindow::generateCustomImagePointsWorker(
             const std::size_t index = static_cast<std::size_t>(y * width + x);
             const float strength = finalStrength[index];
 
-            if (strength < 0.05f) continue; //Allows faint lines, subtle gradients, and low-contrast edges to produce points. //lower is more details
+            if (strength < static_cast<float>(settings.detailThreshold)) continue; // User-controlled detail sensitivity
 
             Candidate candidate;
             candidate.point = QPointF(
@@ -1767,7 +2285,7 @@ void MainWindow::generateCustomImagePointsWorker(
             for (int x = 1; x < width - 1; ++x) {
                 const std::size_t index = static_cast<std::size_t>(y * width + x);
                 const float strength = finalStrength[index];
-                if (strength < 0.025f) continue;
+                if (strength < static_cast<float>(settings.fallbackThreshold)) continue;
 
                 Candidate candidate;
                 candidate.point = QPointF(
@@ -1797,12 +2315,12 @@ void MainWindow::generateCustomImagePointsWorker(
     if (QThread::currentThread()->isInterruptionRequested()) return;
 
     // Apply fast O(N) spatial grid density filter
-    applyPointDensityFilter(candidates);
+    applyPointDensityFilter(candidates, settings.densityScale);
     reportProgress(85);
 
     if (QThread::currentThread()->isInterruptionRequested()) return;
 
-    applyAdaptiveSpatialDistribution(candidates);
+    applyAdaptiveSpatialDistribution(candidates, settings.densityScale);
     reportProgress(93);
 
     if (static_cast<int>(candidates.size()) > maxPoints) {
@@ -1824,15 +2342,26 @@ void MainWindow::generateCustomImagePointsWorker(
         outputStrengths.push_back(candidate.strength);
     }
 
-    customImageDrawIndex_ = 0;
+    reportProgress(100);
 }
 
-void MainWindow::applyPointDensityFilter(std::vector<Candidate>& candidates)
+void MainWindow::applyPointDensityFilter(
+    std::vector<Candidate>& candidates,
+    double densityScale)
 {
     if (candidates.empty()) return;
 
-    constexpr double maxSpacing = 0.00035; //max space between points, default is: 0.00055
-    constexpr double minSpacing = 0.00008; //min space between points, default is: 0.00018
+    // const double maxSpacing = //both old values for density
+    //     0.00035 * densityScale;
+
+    // const double minSpacing =
+    //     0.00008 * densityScale;
+
+    const double maxSpacing =
+        0.00025 * densityScale;
+
+    const double minSpacing =
+        0.000008 * densityScale;
 
     std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
         return a.strength > b.strength;
@@ -1894,14 +2423,25 @@ void MainWindow::updateVisualizationCenter(const QSize& size)
     formulaNeedsUpdate_ = true;
 }
 
-void MainWindow::applyAdaptiveSpatialDistribution(std::vector<Candidate>& candidates)
+void MainWindow::applyAdaptiveSpatialDistribution(
+    std::vector<Candidate>& candidates,
+    double densityScale)
 {
     if (candidates.empty()) return;
 
     constexpr int gridWidth  = 100;
     constexpr int gridHeight = 100;
-    constexpr double maxSpacing = 0.0030; //max space between points(spatial filter), default was: 0.0050
-    constexpr double minSpacing = 0.0002; //min space between points(spatial filter), default was: 0.0012
+    // const double maxSpacing =    //Old values for density
+    //     0.0030 * densityScale;
+
+    // const double minSpacing =
+    //     0.0002 * densityScale;
+
+    const double maxSpacing =
+        0.0010 * densityScale;
+
+    const double minSpacing =
+        0.00001 * densityScale;
 
     struct Cell {
         double strengthSum = 0.0;

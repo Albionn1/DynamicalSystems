@@ -22,6 +22,8 @@
 #include <QScrollArea>
 #include <QTimer>
 #include <QWidget>
+#include <QSlider>
+#include <QCheckBox>
 
 #include <QThread>
 #include <QProgressDialog>
@@ -33,7 +35,7 @@
 #include <deque>
 #include <functional>
 
-    class InitialConditionsDialog;
+class InitialConditionsDialog;
 class HelpDialog;
 
 // Forward declaration of visualization widget
@@ -45,6 +47,22 @@ struct Candidate
     float strength;
     float edgeStrength;
     float textureStrength;
+};
+
+struct CustomImageProcessingSettings
+{
+    int maxPoints = 1500000;
+    int minPoints = 15000;
+    int maxProcessingSize = 3000;
+
+    double edgeWeight = 0.65;
+    double textureWeight = 0.35;
+
+    double detailThreshold = 0.05;
+    double fallbackThreshold = 0.025;
+
+    double shadowWeight = 0.0;
+    double densityScale = 1.0;
 };
 
 class MainWindow : public QMainWindow
@@ -65,13 +83,21 @@ public:
         const QImage& sourceImage,
         std::vector<QPointF>& outputPoints,
         std::vector<float>& outputStrengths,
-        const std::function<void(int)>& progressCallback
+        const std::function<void(int)>& progressCallback,
+        const CustomImageProcessingSettings& settings
         );
 
     void startCustomImageProcessing();
 
-    void applyPointDensityFilter(std::vector<Candidate>& candidates);
-    void applyAdaptiveSpatialDistribution(std::vector<Candidate>& candidates);
+    void applyPointDensityFilter(
+        std::vector<Candidate>& candidates,
+        double densityScale
+        );
+
+    void applyAdaptiveSpatialDistribution(
+        std::vector<Candidate>& candidates,
+        double densityScale
+        );
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
@@ -118,7 +144,7 @@ private:
 
     bool customImageDrawingFinished_ = false;
 
-    double customImageDrawSpeed_ = 220.0; // bigger number draws more points per timer step, making points drawing faster
+    double customImageDrawSpeed_ = 520.0; // bigger number draws more points per timer step, making points drawing faster
 
     // =========================================================
     // CUSTOM IMAGE DYNAMICAL SYSTEM
@@ -360,6 +386,18 @@ private:
     =========================================================*/
 
     class VisualizationWidget* visualizationWidget_ = nullptr;
+
+    /*=========================================================
+      CUSTOM IMAGE CONTROLS
+    =========================================================*/
+
+    QSlider* customQualitySlider_ = nullptr;
+    QSlider* customDetailSlider_ = nullptr;
+    QSlider* customShadowSlider_ = nullptr;
+    QSlider* customTextureSlider_ = nullptr;
+    QSlider* customDensitySlider_ = nullptr;
+
+    QCheckBox* customColorCheck_ = nullptr;
 
     /*=========================================================
       ACTIONS
